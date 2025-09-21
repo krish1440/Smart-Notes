@@ -1,16 +1,36 @@
 import os
 from dotenv import load_dotenv
 import jwt
+import json
 from datetime import datetime, timedelta, timezone
 from functools import wraps
 from flask import Flask, Response, render_template, request, jsonify, session
 from flask_cors import CORS
-import logging
-from threading import Timer
-import markdown
+import google.generativeai as genai
+import pinecone
+from supabase import create_client, Client
+import cloudinary
+import cloudinary.uploader
+from cloudinary.utils import cloudinary_url
+import PyPDF2
+import io
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_google_genai import GoogleGenerativeAI
+import nltk
+from collections import Counter
+import networkx as nx
+from pinecone import Pinecone, ServerlessSpec
 import uuid
 import time
 import warnings
+from transformers import AutoTokenizer, AutoModel
+import torch
+import numpy as np
+from typing import List
+import markdown
+import logging
+from threading import Timer
+import postgrest.exceptions
 import httpx
 from retry import retry
 
@@ -53,150 +73,107 @@ except Exception as e:
     logger.error(f"Error loading environment variables: {str(e)}")
     raise
 
-# Lazy Initializer for services
-class LazyInitializer:
-    def __init__(self):
-        self._supabase = None
-        self._pinecone_client = None
-        self._pinecone_index = None
-        self._cloudinary = None
-        self._hf_embeddings = None
-        self._llm = None
-        self._nltk_initialized = False
+# Initialize services
+try:
+    supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+    genai.configure(api_key=GOOGLE_API_KEY)
+    cloudinary.config(
+        cloud_name=CLOUDINARY_CLOUD_NAME,
+        api_key=CLOUDINARY_API_KEY,
+        api_secret=CLOUDINARY_API_SECRET
+    )
+    logger.info("Supabase and Cloudinary clients initialized")
+except Exception as e:
+    logger.error(f"Error initializing clients: {str(e)}")
+    raise
 
-    def get_supabase(self):
-        if self._supabase is None:
-            from supabase import create_client, Client
-            try:
-                self._supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
-                logger.info("Supabase client initialized")
-            except Exception as e:
-                logger.error(f"Error initializing Supabase: {str(e)}")
-                raise
-        return self._supabase
+# Initialize Pinecone
+try:
+    pc = Pinecone(api_key=PINECONE_API_KEY)
+    logger.info("Pinecone client initialized")
+except Exception as e:
+    logger.error(f"Error initializing Pinecone: {str(e)}")
+    raise
 
-    def get_cloudinary(self):
-        if self._cloudinary is None:
-            import cloudinary
-            import cloudinary.uploader
-            try:
-                cloudinary.config(
-                    cloud_name=CLOUDINARY_CLOUD_NAME,
-                    api_key=CLOUDINARY_API_KEY,
-                    api_secret=CLOUDINARY_API_SECRET
+# Hugging Face Embeddings class
+class HFEmbeddings:
+    def __init__(self, model_name="sentence-transformers/all-MiniLM-L6-v2"):
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+        self.model = AutoModel.from_pretrained(model_name)
+    
+    def embed_documents(self, texts: List[str]) -> List[List[float]]:
+        try:
+            if not texts:
+                return []
+            inputs = self.tokenizer(texts, padding=True, truncation=True, return_tensors="pt")
+            with torch.no_grad():
+                outputs = self.model(**inputs)
+            embeddings = outputs.last_hidden_state.mean(dim=1).numpy()
+            return embeddings.tolist()
+        except (ValueError, RuntimeError) as e:
+            logger.error(f"Error generating HF document embeddings: {str(e)}")
+            return []
+    
+    def embed_query(self, text: str) -> List[float]:
+        embedding = self.embed_documents([text])
+        return embedding[0] if embedding else []
+
+# Initialize HF embeddings
+try:
+    hf_embeddings = HFEmbeddings()
+    logger.info("Hugging Face embeddings initialized")
+except Exception as e:
+    logger.error(f"Error initializing HF embeddings: {str(e)}")
+    raise
+
+# Initialize LLM
+try:
+    llm = GoogleGenerativeAI(model='gemini-1.5-flash', google_api_key=GOOGLE_API_KEY)
+    logger.info("Google Generative AI initialized")
+except Exception as e:
+    logger.error(f"Error initializing Google Generative AI: {str(e)}")
+    raise
+
+# Check if index exists, if not create it
+def initialize_pinecone_index():
+    try:
+        existing_indexes = pc.list_indexes()
+        index_names = [index['name'] for index in existing_indexes]
+        
+        if PINECONE_INDEX_NAME not in index_names:
+            logger.info(f"Creating Pinecone index: {PINECONE_INDEX_NAME}")
+            pc.create_index(
+                name=PINECONE_INDEX_NAME,
+                dimension=384,
+                metric='cosine',
+                spec=ServerlessSpec(
+                    cloud='aws',
+                    region='us-east-1'
                 )
-                self._cloudinary = cloudinary
-                logger.info("Cloudinary client initialized")
-            except Exception as e:
-                logger.error(f"Error initializing Cloudinary: {str(e)}")
-                raise
-        return self._cloudinary
+            )
+            time.sleep(10)
+            logger.info(f"Index {PINECONE_INDEX_NAME} created successfully")
+        else:
+            logger.info(f"Index {PINECONE_INDEX_NAME} already exists")
+            
+        return pc.Index(PINECONE_INDEX_NAME)
+    except Exception as e:
+        if "ALREADY_EXISTS" in str(e):
+            logger.info(f"Index {PINECONE_INDEX_NAME} already exists, proceeding with existing index")
+            return pc.Index(PINECONE_INDEX_NAME)
+        logger.error(f"Error initializing Pinecone index: {str(e)}")
+        return None
 
-    def get_pinecone_client(self):
-        if self._pinecone_client is None:
-            from pinecone import Pinecone, ServerlessSpec
-            try:
-                self._pinecone_client = Pinecone(api_key=PINECONE_API_KEY)
-                logger.info("Pinecone client initialized")
-            except Exception as e:
-                logger.error(f"Error initializing Pinecone: {str(e)}")
-                raise
-        return self._pinecone_client
+# Initialize Pinecone index
+pinecone_index = initialize_pinecone_index()
+if pinecone_index is None:
+    raise RuntimeError("Failed to initialize Pinecone index")
 
-    def get_pinecone_index(self):
-        if self._pinecone_index is None:
-            from pinecone import ServerlessSpec
-            pc = self.get_pinecone_client()
-            try:
-                existing_indexes = pc.list_indexes()
-                index_names = [index['name'] for index in existing_indexes]
-                if PINECONE_INDEX_NAME not in index_names:
-                    logger.info(f"Creating Pinecone index: {PINECONE_INDEX_NAME}")
-                    pc.create_index(
-                        name=PINECONE_INDEX_NAME,
-                        dimension=384,
-                        metric='cosine',
-                        spec=ServerlessSpec(
-                            cloud='aws',
-                            region='us-east-1'
-                        )
-                    )
-                    time.sleep(10)
-                    logger.info(f"Index {PINECONE_INDEX_NAME} created successfully")
-                else:
-                    logger.info(f"Index {PINECONE_INDEX_NAME} already exists")
-                self._pinecone_index = pc.Index(PINECONE_INDEX_NAME)
-            except Exception as e:
-                if "ALREADY_EXISTS" in str(e):
-                    logger.info(f"Index {PINECONE_INDEX_NAME} already exists, proceeding with existing index")
-                    self._pinecone_index = pc.Index(PINECONE_INDEX_NAME)
-                else:
-                    logger.error(f"Error initializing Pinecone index: {str(e)}")
-                    raise
-        return self._pinecone_index
-
-    def get_hf_embeddings(self):
-        if self._hf_embeddings is None:
-            from transformers import AutoTokenizer, AutoModel
-            import torch
-            import numpy as np
-            from typing import List
-
-            class HFEmbeddings:
-                def __init__(self, model_name="sentence-transformers/all-MiniLM-L6-v2"):
-                    self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-                    self.model = AutoModel.from_pretrained(model_name)
-                
-                def embed_documents(self, texts: List[str]) -> List[List[float]]:
-                    try:
-                        if not texts:
-                            return []
-                        inputs = self.tokenizer(texts, padding=True, truncation=True, return_tensors="pt")
-                        with torch.no_grad():
-                            outputs = self.model(**inputs)
-                        embeddings = outputs.last_hidden_state.mean(dim=1).numpy()
-                        return embeddings.tolist()
-                    except (ValueError, RuntimeError) as e:
-                        logger.error(f"Error generating HF document embeddings: {str(e)}")
-                        return []
-                
-                def embed_query(self, text: str) -> List[float]:
-                    embedding = self.embed_documents([text])
-                    return embedding[0] if embedding else []
-
-            try:
-                self._hf_embeddings = HFEmbeddings()
-                logger.info("Hugging Face embeddings initialized")
-            except Exception as e:
-                logger.error(f"Error initializing HF embeddings: {str(e)}")
-                raise
-        return self._hf_embeddings
-
-    def get_llm(self):
-        if self._llm is None:
-            import google.generativeai as genai
-            from langchain_google_genai import GoogleGenerativeAI
-            try:
-                genai.configure(api_key=GOOGLE_API_KEY)
-                self._llm = GoogleGenerativeAI(model='gemini-1.5-flash', google_api_key=GOOGLE_API_KEY)
-                logger.info("Google Generative AI initialized")
-            except Exception as e:
-                logger.error(f"Error initializing Google Generative AI: {str(e)}")
-                raise
-        return self._llm
-
-    def initialize_nltk(self):
-        if not self._nltk_initialized:
-            import nltk
-            try:
-                nltk.data.find('tokenizers/punkt')
-            except LookupError:
-                nltk.download('punkt')
-            self._nltk_initialized = True
-            logger.info("NLTK data initialized")
-
-# Initialize lazy loader
-lazy_init = LazyInitializer()
+# Download NLTK data
+try:
+    nltk.data.find('tokenizers/punkt')
+except LookupError:
+    nltk.download('punkt')
 
 # Timeout decorator for Windows
 def timeout(seconds):
@@ -217,41 +194,35 @@ def timeout(seconds):
     return decorator
 
 # Rate limiting helper with timeout
-@timeout(120)
+@timeout(60)
 def rate_limit_llm(func, *args, max_retries=3, delay=2):
     for attempt in range(max_retries):
         try:
             return func(*args)
-        except Exception as e:
-            import google.generativeai as genai
-            if isinstance(e, genai.types.generation_types.BlockedPromptException):
-                logger.error(f"LLM blocked prompt error: {str(e)}")
-                return None
-            elif isinstance(e, genai.types.generation_types.ResponseError):
-                if "429" in str(e) or "quota" in str(e).lower():
-                    if attempt < max_retries - 1:
-                        wait_time = delay * (2 ** attempt)
-                        logger.warning(f"LLM rate limit hit. Waiting {wait_time} seconds before retry {attempt + 1}/{max_retries}")
-                        time.sleep(wait_time)
-                        continue
-                    else:
-                        logger.error(f"Max retries reached. LLM operation failed: {str(e)}")
-                        return None
+        except genai.types.generation_types.BlockedPromptException as e:
+            logger.error(f"LLM blocked prompt error: {str(e)}")
+            return None
+        except genai.types.generation_types.ResponseError as e:
+            if "429" in str(e) or "quota" in str(e).lower():
+                if attempt < max_retries - 1:
+                    wait_time = delay * (2 ** attempt)
+                    logger.warning(f"LLM rate limit hit. Waiting {wait_time} seconds before retry {attempt + 1}/{max_retries}")
+                    time.sleep(wait_time)
+                    continue
                 else:
-                    logger.error(f"Non-rate-limit LLM error: {str(e)}")
+                    logger.error(f"Max retries reached. LLM operation failed: {str(e)}")
                     return None
             else:
-                logger.error(f"Unexpected LLM error: {str(e)}")
+                logger.error(f"Non-rate-limit LLM error: {str(e)}")
                 return None
     return None
 
 # Database initialization
 def init_db():
     try:
-        supabase = lazy_init.get_supabase()
         supabase.table('users').select("*").limit(1).execute()
         logger.info("Database tables verified")
-    except Exception as e:
+    except postgrest.exceptions.APIError as e:
         logger.error(f"Error verifying database tables: {str(e)}")
         raise
 
@@ -299,10 +270,8 @@ def require_auth(f):
         return f(*args, **kwargs)
     return decorated
 
-@timeout(120)
+@timeout(60)
 def extract_text_from_pdf(file_content):
-    import PyPDF2
-    import io
     try:
         pdf_reader = PyPDF2.PdfReader(io.BytesIO(file_content))
         text = ""
@@ -315,7 +284,6 @@ def extract_text_from_pdf(file_content):
         return None
 
 def chunk_text(text, chunk_size=1000, chunk_overlap=200):
-    from langchain.text_splitter import RecursiveCharacterTextSplitter
     try:
         text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=chunk_size,
@@ -328,10 +296,8 @@ def chunk_text(text, chunk_size=1000, chunk_overlap=200):
         logger.error(f"Error chunking text: {str(e)}")
         return []
 
-@timeout(120)
+@timeout(60)
 def create_pinecone_vectors(chunks, note_id, user_id, batch_size=5):
-    pinecone_index = lazy_init.get_pinecone_index()
-    hf_embeddings = lazy_init.get_hf_embeddings()
     try:
         namespace = f"user_{user_id}_note_{note_id}"
         
@@ -377,14 +343,12 @@ def create_pinecone_vectors(chunks, note_id, user_id, batch_size=5):
     except TimeoutError:
         logger.error("Pinecone vector creation timed out after 30 seconds")
         return False, None
-    except Exception as e:
+    except (ValueError, pinecone.exceptions.PineconeException) as e:
         logger.error(f"Error creating Pinecone vectors: {str(e)}")
         return False, None
 
-@timeout(120)
+@timeout(60)
 def get_relevant_chunks(note_id, user_id, query, top_k=5):
-    pinecone_index = lazy_init.get_pinecone_index()
-    hf_embeddings = lazy_init.get_hf_embeddings()
     try:
         namespace = f"user_{user_id}_note_{note_id}"
         query_emb = hf_embeddings.embed_query(query)
@@ -401,17 +365,16 @@ def get_relevant_chunks(note_id, user_id, query, top_k=5):
     except TimeoutError:
         logger.error("Pinecone query timed out after 15 seconds")
         return []
-    except Exception as e:
+    except pinecone.exceptions.PineconeException as e:
         logger.error(f"Error retrieving chunks from Pinecone: {str(e)}")
         return []
 
 def delete_pinecone_vectors(note_id, user_id):
-    pinecone_index = lazy_init.get_pinecone_index()
     try:
         namespace = f"user_{user_id}_note_{note_id}"
         pinecone_index.delete(delete_all=True, namespace=namespace)
         logger.info(f"Deleted vectors for note {note_id} in namespace {namespace}")
-    except Exception as e:
+    except pinecone.exceptions.PineconeException as e:
         logger.error(f"Error deleting Pinecone vectors: {str(e)}")
 
 # Markdown to HTML formatting
@@ -420,11 +383,10 @@ def markdown_to_html(text):
         return markdown.markdown(text, extensions=['extra'])
     except Exception as e:
         logger.error(f"Error converting Markdown to HTML: {str(e)}")
-        return text
+        return text  # Fallback to plain text if conversion fails
 
-@timeout(150)
+@timeout(120)
 def summarize_text(text):
-    import google.generativeai as genai
     def generate_summary():
         model = genai.GenerativeModel('gemini-1.5-flash')
         prompt = f"""
@@ -446,9 +408,8 @@ def summarize_text(text):
     
     return rate_limit_llm(generate_summary) or "Error generating summary"
 
-@timeout(120)
+@timeout(60)
 def upload_to_cloudinary(file_content, resource_type, folder):
-    cloudinary = lazy_init.get_cloudinary()
     try:
         upload_result = cloudinary.uploader.upload(
             file_content,
@@ -456,19 +417,17 @@ def upload_to_cloudinary(file_content, resource_type, folder):
             folder=folder
         )
         return upload_result['secure_url']
-    except Exception as e:
+    except cloudinary.exceptions.Error as e:
         logger.error(f"Cloudinary error: {str(e)}")
         raise
 
 # Retry decorator for Supabase queries
 @retry(httpx.ConnectError, tries=3, delay=1, backoff=2)
 def check_pdf_count(user_id, twenty_four_hours_ago):
-    supabase = lazy_init.get_supabase()
     return supabase.table('notes').select('count').eq('user_id', user_id).eq('file_type', 'pdf').gte('created_at', twenty_four_hours_ago.isoformat()).execute()
 
 @retry(httpx.ConnectError, tries=3, delay=1, backoff=2)
 def check_chat_count(user_id, twenty_four_hours_ago):
-    supabase = lazy_init.get_supabase()
     return supabase.table('chats').select('count').eq('user_id', user_id).gte('created_at', twenty_four_hours_ago.isoformat()).execute()
 
 # Routes
@@ -495,15 +454,17 @@ def signup():
             logger.warning("Missing email or password in signup request")
             return jsonify({'error': 'Email and password required'}), 400
         
-        supabase = lazy_init.get_supabase()
         try:
             existing_user = supabase.table('users').select("*").eq('email', email).execute()
             if existing_user.data:
                 logger.warning(f"User already exists: {email}")
                 return jsonify({'error': 'User already exists'}), 400
-        except Exception as e:
+        except postgrest.exceptions.APIError as e:
             logger.error(f"Supabase API error checking user: {str(e)}")
             return jsonify({'error': f'Database error checking user: {str(e)}'}), 500
+        except httpx.ConnectError as e:
+            logger.error(f"Connection error to Supabase: {str(e)}")
+            return jsonify({'error': f'Failed to connect to database: {str(e)}'}), 503
         
         scheme = 'https' if request.is_secure else 'http'
         host = request.host
@@ -520,9 +481,12 @@ def signup():
                     "email_redirect_to": redirect_url
                 }
             })
-        except Exception as e:
+        except postgrest.exceptions.APIError as e:
             logger.error(f"Supabase API error during signup: {str(e)}")
             return jsonify({'error': f'Failed to process signup due to database error: {str(e)}'}), 500
+        except httpx.ConnectError as e:
+            logger.error(f"Connection error to Supabase during signup: {str(e)}")
+            return jsonify({'error': f'Failed to connect to database: {str(e)}'}), 503
         
         if not auth_response.user:
             logger.warning("Failed to initiate signup process")
@@ -555,16 +519,18 @@ def verify_otp():
             logger.warning("Session expired during OTP verification")
             return jsonify({'error': 'Session expired. Please try again'}), 400
             
-        supabase = lazy_init.get_supabase()
         try:
             verify_response = supabase.auth.verify_otp({
                 "email": email,
                 "token": otp,
                 "type": "signup"
             })
-        except Exception as e:
+        except postgrest.exceptions.APIError as e:
             logger.error(f"Supabase API error during OTP verification: {str(e)}")
             return jsonify({'error': f'Failed to verify OTP due to database error: {str(e)}'}), 400
+        except httpx.ConnectError as e:
+            logger.error(f"Connection error to Supabase during OTP verification: {str(e)}")
+            return jsonify({'error': f'Failed to connect to database: {str(e)}'}), 503
         
         if not verify_response.user:
             logger.warning("Invalid OTP provided")
@@ -579,9 +545,12 @@ def verify_otp():
                 'password': password,
                 'created_at': datetime.now(timezone.utc).isoformat()
             }).execute()
-        except Exception as e:
+        except postgrest.exceptions.APIError as e:
             logger.error(f"Supabase API error inserting user: {str(e)}")
             return jsonify({'error': f'Failed to create user record: {str(e)}'}), 500
+        except httpx.ConnectError as e:
+            logger.error(f"Connection error to Supabase inserting user: {str(e)}")
+            return jsonify({'error': f'Failed to connect to database: {str(e)}'}), 503
         
         if not result.data:
             logger.warning("Failed to create user record")
@@ -617,12 +586,14 @@ def login():
             logger.warning("Missing email or password in login request")
             return jsonify({'error': 'Email and password required'}), 400
         
-        supabase = lazy_init.get_supabase()
         try:
             result = supabase.table('users').select("*").eq('email', email).execute()
-        except Exception as e:
+        except postgrest.exceptions.APIError as e:
             logger.error(f"Supabase API error during login: {str(e)}")
             return jsonify({'error': f'Failed to process login due to database error: {str(e)}'}), 500
+        except httpx.ConnectError as e:
+            logger.error(f"Connection error to Supabase during login: {str(e)}")
+            return jsonify({'error': f'Failed to connect to database: {str(e)}'}), 503
         
         if not result.data:
             logger.warning(f"User not found: {email}")
@@ -664,6 +635,7 @@ def upload_pdf():
         
         user_id = request.current_user['user_id']
         
+        # Check PDF upload limit (5 per 24 hours)
         now = datetime.now(timezone.utc)
         twenty_four_hours_ago = now - timedelta(hours=24)
         reset_time = now + timedelta(hours=24)
@@ -678,13 +650,19 @@ def upload_pdf():
                 return jsonify({
                     'error': f'Daily PDF upload limit of 5 reached. Please try again after {reset_time_str}.'
                 }), 429
+        except postgrest.exceptions.APIError as e:
+            logger.error(f"Supabase API error checking PDF count: {str(e)}")
+            return jsonify({'error': f'Database error checking upload limit: {str(e)}'}), 500
+        except httpx.ConnectError as e:
+            logger.error(f"Connection error to Supabase: {str(e)}")
+            return jsonify({'error': f'Failed to connect to database: {str(e)}'}), 503
         except Exception as e:
-            logger.error(f"Error checking PDF count: {str(e)}")
+            logger.error(f"Unexpected error checking PDF count: {str(e)}")
             return jsonify({'error': f'Unexpected error checking upload limit: {str(e)}'}), 500
         
         file_content = file.read()
         file_size = len(file_content)
-        max_size = 5 * 1024 * 1024
+        max_size = 5 * 1024 * 1024  # 5MB limit
         
         if file_size > max_size:
             logger.warning(f"File too large: {file_size} bytes")
@@ -696,7 +674,7 @@ def upload_pdf():
         except TimeoutError:
             logger.error("Cloudinary upload timed out after 30 seconds")
             return jsonify({'error': 'File upload to Cloudinary timed out'}), 504
-        except Exception as e:
+        except cloudinary.exceptions.Error as e:
             logger.error(f"Cloudinary error during PDF upload: {str(e)}")
             return jsonify({'error': f'Failed to upload PDF to Cloudinary: {str(e)}'}), 500
         
@@ -709,7 +687,7 @@ def upload_pdf():
         except TimeoutError:
             logger.error("PDF processing timed out after 30 seconds")
             return jsonify({'error': 'PDF processing timed out'}), 504
-        except Exception as e:
+        except PyPDF2.errors.PdfReadError as e:
             logger.error(f"PDF processing error: {str(e)}")
             return jsonify({'error': f'Failed to process PDF content: {str(e)}'}), 400
         
@@ -723,7 +701,6 @@ def upload_pdf():
             logger.error("Summary generation timed out after 15 seconds")
             return jsonify({'error': 'Summary generation timed out'}), 504
         
-        supabase = lazy_init.get_supabase()
         try:
             note_data = {
                 'user_id': user_id,
@@ -739,11 +716,13 @@ def upload_pdf():
             note = result.data[0]
             note_id = note['id']
             logger.info(f"Note {note_id} stored in Supabase for user {user_id}")
-        except Exception as e:
+        except postgrest.exceptions.APIError as e:
             logger.error(f"Supabase API error storing note: {str(e)}")
             return jsonify({'error': f'Failed to store PDF note in database: {str(e)}'}), 500
+        except httpx.ConnectError as e:
+            logger.error(f"Connection error to Supabase storing note: {str(e)}")
+            return jsonify({'error': f'Failed to connect to database: {str(e)}'}), 503
         
-        lazy_init.initialize_nltk()
         chunks = chunk_text(text)
         
         logger.info(f"Creating vector store with {len(chunks)} chunks using HF embeddings...")
@@ -759,9 +738,12 @@ def upload_pdf():
                     'pinecone_namespace': namespace
                 }).eq('id', note_id).execute()
                 logger.info(f"Successfully created Pinecone vector store for note {note_id}")
-            except Exception as e:
+            except postgrest.exceptions.APIError as e:
                 logger.error(f"Supabase API error updating namespace: {str(e)}")
                 return jsonify({'error': f'Failed to update vector store namespace: {str(e)}'}), 500
+            except httpx.ConnectError as e:
+                logger.error(f"Connection error to Supabase updating namespace: {str(e)}")
+                return jsonify({'error': f'Failed to connect to database: {str(e)}'}), 503
         else:
             logger.warning(f"Warning: Could not create vector store for note {note_id}")
         
@@ -782,16 +764,18 @@ def upload_pdf():
 def delete_note(note_id):
     try:
         user_id = request.current_user['user_id']
-        supabase = lazy_init.get_supabase()
         
         try:
             note_result = supabase.table('notes').select("*").eq('id', note_id).eq('user_id', user_id).eq('deleted', False).execute()
             if not note_result.data:
                 logger.warning(f"Note {note_id} not found for user {user_id}")
                 return jsonify({'error': 'Note not found'}), 404
-        except Exception as e:
+        except postgrest.exceptions.APIError as e:
             logger.error(f"Supabase API error retrieving note: {str(e)}")
             return jsonify({'error': f'Failed to retrieve note: {str(e)}'}), 500
+        except httpx.ConnectError as e:
+            logger.error(f"Connection error to Supabase retrieving note: {str(e)}")
+            return jsonify({'error': f'Failed to connect to database: {str(e)}'}), 503
         
         note = note_result.data[0]
         
@@ -804,10 +788,9 @@ def delete_note(note_id):
                         public_id_with_folder = '/'.join(url_parts[7:])
                         public_id = public_id_with_folder.rsplit('.', 1)[0]
                         resource_type = "raw" if note['file_type'] == 'pdf' else "video"
-                        cloudinary = lazy_init.get_cloudinary()
                         cloudinary.uploader.destroy(public_id, resource_type=resource_type)
                         logger.info(f"Deleted file from Cloudinary: {public_id}")
-            except Exception as e:
+            except cloudinary.exceptions.Error as e:
                 logger.error(f"Error deleting from Cloudinary: {str(e)}")
         
         try:
@@ -819,9 +802,12 @@ def delete_note(note_id):
             supabase.table('chats').delete().eq('note_id', note_id).eq('user_id', user_id).execute()
             supabase.table('notes').update({'deleted': True, 'file_url': None, 'pinecone_namespace': None}).eq('id', note_id).eq('user_id', user_id).execute()
             logger.info(f"Note {note_id} and associated chats soft-deleted for user {user_id}")
-        except Exception as e:
+        except postgrest.exceptions.APIError as e:
             logger.error(f"Supabase API error during note soft-deletion: {str(e)}")
             return jsonify({'error': f'Failed to soft-delete note due to database error: {str(e)}'}), 500
+        except httpx.ConnectError as e:
+            logger.error(f"Connection error to Supabase during soft-deletion: {str(e)}")
+            return jsonify({'error': f'Failed to connect to database: {str(e)}'}), 503
         
         return jsonify({'message': 'Note and all associated data deleted successfully from UI'}), 200
         
@@ -842,8 +828,8 @@ def chat():
             return jsonify({'error': 'Message required'}), 400
         
         user_id = request.current_user['user_id']
-        supabase = lazy_init.get_supabase()
         
+        # Check daily chat query limit (20 per 24 hours)
         now = datetime.now(timezone.utc)
         twenty_four_hours_ago = now - timedelta(hours=24)
         reset_time = now + timedelta(hours=24)
@@ -857,10 +843,17 @@ def chat():
                 return jsonify({
                     'error': f'Daily chat limit of 20 queries reached. Please try again after {reset_time_str}.'
                 }), 429
+        except postgrest.exceptions.APIError as e:
+            logger.error(f"Supabase API error checking chat count: {str(e)}")
+            return jsonify({'error': f'Failed to check chat limit: {str(e)}'}), 500
+        except httpx.ConnectError as e:
+            logger.error(f"Connection error to Supabase checking chat count: {str(e)}")
+            return jsonify({'error': f'Failed to connect to database: {str(e)}'}), 503
         except Exception as e:
-            logger.error(f"Error checking chat count: {str(e)}")
+            logger.error(f"Unexpected error checking chat count: {str(e)}")
             return jsonify({'error': f'Unexpected error checking chat limit: {str(e)}'}), 500
         
+        # Get context
         context = ""
         chat_history = []
         relevant_context = ""
@@ -888,12 +881,18 @@ def chat():
                     chat_result = supabase.table('chats').select("user_message,ai_response").eq('user_id', user_id).eq('note_id', note_id).order('created_at', desc=False).limit(5).execute()
                     if chat_result.data:
                         chat_history = chat_result.data
-                except Exception as e:
+                except postgrest.exceptions.APIError as e:
                     logger.error(f"Supabase API error retrieving chat history: {str(e)}")
                     return jsonify({'error': f'Failed to retrieve chat history: {str(e)}'}), 500
-            except Exception as e:
+                except httpx.ConnectError as e:
+                    logger.error(f"Connection error to Supabase retrieving chat history: {str(e)}")
+                    return jsonify({'error': f'Failed to connect to database: {str(e)}'}), 503
+            except postgrest.exceptions.APIError as e:
                 logger.error(f"Supabase API error retrieving note: {str(e)}")
                 return jsonify({'error': f'Failed to retrieve note: {str(e)}'}), 500
+            except httpx.ConnectError as e:
+                logger.error(f"Connection error to Supabase retrieving note: {str(e)}")
+                return jsonify({'error': f'Failed to connect to database: {str(e)}'}), 503
         
         history_str = ""
         for chat in chat_history:
@@ -902,7 +901,6 @@ def chat():
         final_context = relevant_context if relevant_context else context
         
         def generate_response():
-            import google.generativeai as genai
             model = genai.GenerativeModel('gemini-1.5-flash')
             prompt = f"""
 [SYSTEM INSTRUCTIONS]
@@ -983,9 +981,12 @@ Ensure the response is **professional, clear, and suitable for inclusion in a PD
             }
             supabase.table('chats').insert(chat_data).execute()
             logger.info(f"Chat stored in Supabase for user {user_id}, note {note_id}")
-        except Exception as e:
+        except postgrest.exceptions.APIError as e:
             logger.error(f"Supabase API error storing chat: {str(e)}")
             return jsonify({'error': f'Failed to store chat: {str(e)}'}), 500
+        except httpx.ConnectError as e:
+            logger.error(f"Connection error to Supabase storing chat: {str(e)}")
+            return jsonify({'error': f'Failed to connect to database: {str(e)}'}), 503
         
         logger.info(f"Chat response generated for user {user_id}, note {note_id}")
         return jsonify({'response': formatted_response}), 200
@@ -999,18 +1000,21 @@ Ensure the response is **professional, clear, and suitable for inclusion in a PD
 def get_notes():
     try:
         user_id = request.current_user['user_id']
-        supabase = lazy_init.get_supabase()
         try:
             result = supabase.table('notes').select("*").eq('user_id', user_id).eq('deleted', False).order('created_at', desc=True).execute()
             notes = result.data
             logger.info(f"Retrieved {len(notes)} notes for user {user_id}")
             return jsonify({'notes': notes}), 200
-        except Exception as e:
+        except postgrest.exceptions.APIError as e:
             logger.error(f"Supabase API error retrieving notes: {str(e)}")
             return jsonify({'error': f'Failed to retrieve notes: {str(e)}'}), 500
+        except httpx.ConnectError as e:
+            logger.error(f"Connection error to Supabase retrieving notes: {str(e)}")
+            return jsonify({'error': f'Failed to connect to database: {str(e)}'}), 503
     except Exception as e:
         logger.error(f"Unexpected error during notes retrieval: {str(e)}")
         return jsonify({'error': f'Unexpected error: {str(e)}'}), 500
+
 
 @app.route('/api/notes/<note_id>/rename', methods=['PUT'])
 @require_auth
@@ -1024,23 +1028,28 @@ def rename_note(note_id):
             logger.warning("Missing new title in rename request")
             return jsonify({'error': 'New title is required'}), 400
             
-        supabase = lazy_init.get_supabase()
         try:
             note_result = supabase.table('notes').select("*").eq('id', note_id).eq('user_id', user_id).eq('deleted', False).execute()
             if not note_result.data:
                 logger.warning(f"Note {note_id} not found for user {user_id}")
                 return jsonify({'error': 'Note not found'}), 404
-        except Exception as e:
+        except postgrest.exceptions.APIError as e:
             logger.error(f"Supabase API error retrieving note: {str(e)}")
             return jsonify({'error': f'Failed to retrieve note: {str(e)}'}), 500
+        except httpx.ConnectError as e:
+            logger.error(f"Connection error to Supabase retrieving note: {str(e)}")
+            return jsonify({'error': f'Failed to connect to database: {str(e)}'}), 503
         
         try:
             supabase.table('notes').update({'title': new_title}).eq('id', note_id).eq('user_id', user_id).execute()
             logger.info(f"Note {note_id} renamed to {new_title} for user {user_id}")
             return jsonify({'message': 'Note renamed successfully'}), 200
-        except Exception as e:
+        except postgrest.exceptions.APIError as e:
             logger.error(f"Supabase API error renaming note: {str(e)}")
             return jsonify({'error': f'Failed to rename note: {str(e)}'}), 500
+        except httpx.ConnectError as e:
+            logger.error(f"Connection error to Supabase renaming note: {str(e)}")
+            return jsonify({'error': f'Failed to connect to database: {str(e)}'}), 503
         
     except Exception as e:
         logger.error(f"Unexpected error during note rename: {str(e)}")
@@ -1051,15 +1060,17 @@ def rename_note(note_id):
 def get_chat_history(note_id):
     try:
         user_id = request.current_user['user_id']
-        supabase = lazy_init.get_supabase()
         try:
             note_result = supabase.table('notes').select("*").eq('id', note_id).eq('user_id', user_id).eq('deleted', False).execute()
             if not note_result.data:
                 logger.warning(f"Note {note_id} not found for user {user_id}")
                 return jsonify({'error': 'Note not found'}), 404
-        except Exception as e:
+        except postgrest.exceptions.APIError as e:
             logger.error(f"Supabase API error retrieving note: {str(e)}")
             return jsonify({'error': f'Failed to retrieve note: {str(e)}'}), 500
+        except httpx.ConnectError as e:
+            logger.error(f"Connection error to Supabase retrieving note: {str(e)}")
+            return jsonify({'error': f'Failed to connect to database: {str(e)}'}), 503
         try:
             result = supabase.table('chats') \
                 .select('user_message, ai_response, created_at') \
@@ -1072,9 +1083,12 @@ def get_chat_history(note_id):
                 chat['ai_response'] = chat.get('ai_response', '')
             logger.info(f"Retrieved {len(chats)} chat messages for user {user_id}, note {note_id}")
             return jsonify({"chats": chats}), 200
-        except Exception as e:
+        except postgrest.exceptions.APIError as e:
             logger.error(f"Supabase API error retrieving chat history: {str(e)}")
             return jsonify({'error': f'Failed to fetch chat history: {str(e)}'}), 500
+        except httpx.ConnectError as e:
+            logger.error(f"Connection error to Supabase retrieving chat history: {str(e)}")
+            return jsonify({'error': f'Failed to connect to database: {str(e)}'}), 503
     except Exception as e:
         logger.error(f"Unexpected error during chat history retrieval: {str(e)}")
         return jsonify({'error': f'Unexpected error: {str(e)}'}), 500
@@ -1096,69 +1110,86 @@ def change_password():
             logger.warning("New password too short")
             return jsonify({'error': 'New password must be at least 6 characters'}), 400
         
-        supabase = lazy_init.get_supabase()
+        # Verify user and old password
         try:
             user = supabase.table('users').select('id, email, password').eq('email', email).execute()
             if not user.data or user.data[0]['password'] != old_password:
                 logger.warning(f"Invalid email or old password for user: {email}")
                 return jsonify({'error': 'Invalid email or old password'}), 401
-        except Exception as e:
+        except postgrest.exceptions.APIError as e:
             logger.error(f"Supabase API error verifying user credentials: {str(e)}")
             return jsonify({'error': f'Failed to verify credentials: {str(e)}'}), 500
+        except httpx.ConnectError as e:
+            logger.error(f"Connection error to Supabase verifying credentials: {str(e)}")
+            return jsonify({'error': f'Failed to connect to database: {str(e)}'}), 503
         
+        # Update password
         try:
             supabase.table('users').update({
                 'password': new_password
             }).eq('email', email).execute()
             logger.info(f"Password changed successfully for user: {email}")
             return jsonify({'message': 'Password changed successfully'}), 200
-        except Exception as e:
+        except postgrest.exceptions.APIError as e:
             logger.error(f"Supabase API error updating password: {str(e)}")
             return jsonify({'error': f'Failed to update password: {str(e)}'}), 500
+        except httpx.ConnectError as e:
+            logger.error(f"Connection error to Supabase updating password: {str(e)}")
+            return jsonify({'error': f'Failed to connect to database: {str(e)}'}), 503
     
     except Exception as e:
         logger.error(f"Unexpected error in change-password endpoint: {str(e)}")
         return jsonify({'error': f'Unexpected error: {str(e)}'}), 500
 
+
+from reportlab.lib.pagesizes import letter
+from reportlab.lib import colors
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, ListFlowable, ListItem, Preformatted
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.enums import TA_LEFT, TA_JUSTIFY
+from bs4 import BeautifulSoup
+from io import BytesIO
+
 @app.route('/api/notes/<note_id>/export', methods=['GET'])
 @require_auth
 def export_note_to_pdf(note_id):
-    from reportlab.lib.pagesizes import letter
-    from reportlab.lib import colors
-    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, ListFlowable, ListItem, Preformatted
-    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-    from reportlab.lib.enums import TA_LEFT, TA_JUSTIFY
-    from bs4 import BeautifulSoup
-    from io import BytesIO
-
     try:
         user_id = request.current_user['user_id']
         logger.info(f"Exporting note {note_id} to PDF for user {user_id}")
-        supabase = lazy_init.get_supabase()
 
+        # Fetch note data
         try:
             note_result = supabase.table('notes').select("title, summary").eq('id', note_id).eq('user_id', user_id).eq('deleted', False).execute()
             if not note_result.data:
                 logger.warning(f"Note {note_id} not found for user {user_id}")
                 return jsonify({'error': 'Note not found'}), 404
             note = note_result.data[0]
-        except Exception as e:
+        except postgrest.exceptions.APIError as e:
             logger.error(f"Supabase API error retrieving note: {str(e)}")
             return jsonify({'error': f'Failed to retrieve note: {str(e)}'}), 500
+        except httpx.ConnectError as e:
+            logger.error(f"Connection error to Supabase retrieving note: {str(e)}")
+            return jsonify({'error': f'Failed to connect to database: {str(e)}'}), 503
 
+        # Fetch chat history
         try:
             chat_result = supabase.table('chats').select('user_message, ai_response, created_at') \
                 .eq('user_id', user_id).eq('note_id', note_id).order('created_at', desc=False).execute()
             chats = chat_result.data if chat_result.data else []
             logger.info(f"Retrieved {len(chats)} chat messages for note {note_id}")
-        except Exception as e:
+        except postgrest.exceptions.APIError as e:
             logger.error(f"Supabase API error retrieving chat history: {str(e)}")
             return jsonify({'error': f'Failed to fetch chat history: {str(e)}'}), 500
+        except httpx.ConnectError as e:
+            logger.error(f"Connection error to Supabase retrieving chat history: {str(e)}")
+            return jsonify({'error': f'Failed to connect to database: {str(e)}'}), 503
 
+        # Create PDF
         buffer = BytesIO()
         doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=72, leftMargin=72, topMargin=72, bottomMargin=18)
         styles = getSampleStyleSheet()
 
+        # Custom styles for futuristic look
         title_style = ParagraphStyle(
             'TitleStyle',
             parent=styles['Title'],
@@ -1236,6 +1267,7 @@ def export_note_to_pdf(note_id):
 
         story = []
 
+        # Helper function to convert inner HTML to ReportLab markup
         def html_to_reportlab(tag):
             markup = ''
             for child in tag.contents:
@@ -1255,6 +1287,7 @@ def export_note_to_pdf(note_id):
                     markup += html_to_reportlab(child)
             return markup
 
+        # Recursive function to parse HTML tag to ReportLab flowables
         def parse_html_tag(tag, style, code_style, highlight_style):
             if not tag:
                 return None
@@ -1287,6 +1320,7 @@ def export_note_to_pdf(note_id):
             elif tag.string:
                 return Paragraph(tag.string.strip(), style)
             else:
+                # Recursive for children
                 children = []
                 for child in tag.children:
                     child_elem = parse_html_tag(child, style, code_style, highlight_style)
@@ -1297,6 +1331,7 @@ def export_note_to_pdf(note_id):
                             children.append(child_elem)
                 return children if children else None
 
+        # Helper function to parse HTML content
         def parse_html_content(html_content, content_style, code_style, highlight_style):
             if not html_content:
                 return [Paragraph("No content available.", content_style)]
@@ -1313,23 +1348,32 @@ def export_note_to_pdf(note_id):
                         elements.append(elem)
             return elements
 
+        # Add title
         story.append(Paragraph(note['title'], title_style))
         story.append(Spacer(1, 24))
+
+        # Add summary section
         story.append(Paragraph("Summary", heading_style))
         story.extend(parse_html_content(note['summary'], body_style, code_style, highlight_style))
         story.append(Spacer(1, 36))
+
+        # Add chat history section
         story.append(Paragraph("Chat History", heading_style))
         if chats:
             for i, chat in enumerate(chats, 1):
+                # Numbered question
                 story.append(Paragraph(f"{i}. Question", subheading_style))
                 story.append(Paragraph(chat['user_message'], question_style))
                 story.append(Spacer(1, 12))
+
+                # Answer
                 story.append(Paragraph("Answer", subheading_style))
                 story.extend(parse_html_content(chat['ai_response'], answer_style, code_style, highlight_style))
                 story.append(Spacer(1, 36))
         else:
             story.append(Paragraph("No chat history available.", body_style))
 
+        # Build PDF
         doc.build(story)
         buffer.seek(0)
         pdf_data = buffer.getvalue()
@@ -1346,7 +1390,8 @@ def export_note_to_pdf(note_id):
         logger.error(f"Unexpected error during PDF export: {str(e)}")
         return jsonify({'error': f'Unexpected error: {str(e)}'}), 500
 
+
+
 if __name__ == '__main__':
     init_db()
-    app.run(debug=False)
-
+    app.run(debug=True)
