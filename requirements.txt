@@ -2,7 +2,7 @@ Flask
 python-dotenv
 PyJWT
 google-generativeai
-pinecone-client
+pinecone
 supabase
 cloudinary
 PyPDF2
@@ -19,3 +19,4 @@ reportlab
 beautifulsoup4
 gunicorn
 flask_cors
+
