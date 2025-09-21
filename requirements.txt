@@ -18,4 +18,4 @@ retry
 reportlab
 beautifulsoup4
 gunicorn
-
+flask_cors
