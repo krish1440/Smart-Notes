@@ -4,7 +4,7 @@ python-dotenv
 pyjwt
 supabase
 cloudinary
-pinecone-client
+pinecone
 huggingface_hub
 langchain
 langchain-google-genai
@@ -17,3 +17,4 @@ reportlab
 beautifulsoup4
 markdown
 gunicorn
+
