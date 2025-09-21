@@ -15,4 +15,5 @@ httpx
 retry
 reportlab
 beautifulsoup4
+markdown
 gunicorn
