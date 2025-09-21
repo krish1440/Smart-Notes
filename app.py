@@ -1,4 +1,5 @@
 import os
+from typing import List
 from dotenv import load_dotenv
 import jwt
 import json
@@ -6,41 +7,21 @@ from datetime import datetime, timedelta, timezone
 from functools import wraps
 from flask import Flask, Response, render_template, request, jsonify, session
 from flask_cors import CORS
-import google.generativeai as genai
-import pinecone
-from supabase import create_client, Client
-import cloudinary
-import cloudinary.uploader
-from cloudinary.utils import cloudinary_url
-import PyPDF2
-import io
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_google_genai import GoogleGenerativeAI
-import nltk
-from collections import Counter
-import networkx as nx
-from pinecone import Pinecone, ServerlessSpec
+import logging
+from threading import Timer
+import markdown
 import uuid
 import time
 import warnings
-from transformers import AutoTokenizer, AutoModel
-import torch
-import numpy as np
-from typing import List
-import markdown
-import logging
-from threading import Timer
-import postgrest.exceptions
 import httpx
 from retry import retry
+import postgrest.exceptions
 
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s %(levelname)s: %(message)s',
-    handlers=[
-        logging.StreamHandler(),
-    ]
+    handlers=[logging.StreamHandler()]
 )
 logger = logging.getLogger(__name__)
 
@@ -65,115 +46,151 @@ try:
     JWT_SECRET = os.getenv("JWT_SECRET")
     PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
     PINECONE_INDEX_NAME = os.getenv("PINECONE_INDEX_NAME")
+    HUGGINGFACE_API_KEY = os.getenv("HUGGINGFACE_API_KEY")
 
-    if not all([SUPABASE_URL, SUPABASE_KEY, GOOGLE_API_KEY, CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET, PINECONE_API_KEY, PINECONE_INDEX_NAME]):
+    if not all([SUPABASE_URL, SUPABASE_KEY, GOOGLE_API_KEY, CLOUDINARY_CLOUD_NAME, 
+                CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET, JWT_SECRET, PINECONE_API_KEY, 
+                PINECONE_INDEX_NAME, HUGGINGFACE_API_KEY]):
         raise ValueError("Missing required environment variables")
     logger.info("Environment variables loaded successfully")
 except Exception as e:
     logger.error(f"Error loading environment variables: {str(e)}")
     raise
 
-# Initialize services
-try:
-    supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-    genai.configure(api_key=GOOGLE_API_KEY)
-    cloudinary.config(
-        cloud_name=CLOUDINARY_CLOUD_NAME,
-        api_key=CLOUDINARY_API_KEY,
-        api_secret=CLOUDINARY_API_SECRET
-    )
-    logger.info("Supabase and Cloudinary clients initialized")
-except Exception as e:
-    logger.error(f"Error initializing clients: {str(e)}")
-    raise
+# Lazy Initializer for services
+class LazyInitializer:
+    def __init__(self):
+        self._supabase = None
+        self._pinecone_client = None
+        self._pinecone_index = None
+        self._cloudinary = None
+        self._hf_embeddings = None
+        self._llm = None
+        self._nltk_initialized = False
 
-# Initialize Pinecone
-try:
-    pc = Pinecone(api_key=PINECONE_API_KEY)
-    logger.info("Pinecone client initialized")
-except Exception as e:
-    logger.error(f"Error initializing Pinecone: {str(e)}")
-    raise
+    def get_supabase(self):
+        if self._supabase is None:
+            from supabase import create_client, Client
+            try:
+                self._supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+                logger.info("Supabase client initialized")
+            except Exception as e:
+                logger.error(f"Error initializing Supabase: {str(e)}")
+                raise
+        return self._supabase
 
-# Hugging Face Embeddings class
-class HFEmbeddings:
-    def __init__(self, model_name="sentence-transformers/all-MiniLM-L6-v2"):
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self.model = AutoModel.from_pretrained(model_name)
-    
-    def embed_documents(self, texts: List[str]) -> List[List[float]]:
-        try:
-            if not texts:
-                return []
-            inputs = self.tokenizer(texts, padding=True, truncation=True, return_tensors="pt")
-            with torch.no_grad():
-                outputs = self.model(**inputs)
-            embeddings = outputs.last_hidden_state.mean(dim=1).numpy()
-            return embeddings.tolist()
-        except (ValueError, RuntimeError) as e:
-            logger.error(f"Error generating HF document embeddings: {str(e)}")
-            return []
-    
-    def embed_query(self, text: str) -> List[float]:
-        embedding = self.embed_documents([text])
-        return embedding[0] if embedding else []
-
-# Initialize HF embeddings
-try:
-    hf_embeddings = HFEmbeddings()
-    logger.info("Hugging Face embeddings initialized")
-except Exception as e:
-    logger.error(f"Error initializing HF embeddings: {str(e)}")
-    raise
-
-# Initialize LLM
-try:
-    llm = GoogleGenerativeAI(model='gemini-1.5-flash', google_api_key=GOOGLE_API_KEY)
-    logger.info("Google Generative AI initialized")
-except Exception as e:
-    logger.error(f"Error initializing Google Generative AI: {str(e)}")
-    raise
-
-# Check if index exists, if not create it
-def initialize_pinecone_index():
-    try:
-        existing_indexes = pc.list_indexes()
-        index_names = [index['name'] for index in existing_indexes]
-        
-        if PINECONE_INDEX_NAME not in index_names:
-            logger.info(f"Creating Pinecone index: {PINECONE_INDEX_NAME}")
-            pc.create_index(
-                name=PINECONE_INDEX_NAME,
-                dimension=384,
-                metric='cosine',
-                spec=ServerlessSpec(
-                    cloud='aws',
-                    region='us-east-1'
+    def get_cloudinary(self):
+        if self._cloudinary is None:
+            import cloudinary
+            import cloudinary.uploader
+            try:
+                cloudinary.config(
+                    cloud_name=CLOUDINARY_CLOUD_NAME,
+                    api_key=CLOUDINARY_API_KEY,
+                    api_secret=CLOUDINARY_API_SECRET
                 )
-            )
-            time.sleep(10)
-            logger.info(f"Index {PINECONE_INDEX_NAME} created successfully")
-        else:
-            logger.info(f"Index {PINECONE_INDEX_NAME} already exists")
-            
-        return pc.Index(PINECONE_INDEX_NAME)
-    except Exception as e:
-        if "ALREADY_EXISTS" in str(e):
-            logger.info(f"Index {PINECONE_INDEX_NAME} already exists, proceeding with existing index")
-            return pc.Index(PINECONE_INDEX_NAME)
-        logger.error(f"Error initializing Pinecone index: {str(e)}")
-        return None
+                self._cloudinary = cloudinary
+                logger.info("Cloudinary client initialized")
+            except Exception as e:
+                logger.error(f"Error initializing Cloudinary: {str(e)}")
+                raise
+        return self._cloudinary
 
-# Initialize Pinecone index
-pinecone_index = initialize_pinecone_index()
-if pinecone_index is None:
-    raise RuntimeError("Failed to initialize Pinecone index")
+    def get_pinecone_client(self):
+        if self._pinecone_client is None:
+            from pinecone import Pinecone
+            try:
+                self._pinecone_client = Pinecone(api_key=PINECONE_API_KEY)
+                logger.info("Pinecone client initialized")
+            except Exception as e:
+                logger.error(f"Error initializing Pinecone: {str(e)}")
+                raise
+        return self._pinecone_client
 
-# Download NLTK data
-try:
-    nltk.data.find('tokenizers/punkt')
-except LookupError:
-    nltk.download('punkt')
+    def get_pinecone_index(self):
+        if self._pinecone_index is None:
+            from pinecone import ServerlessSpec
+            pc = self.get_pinecone_client()
+            try:
+                existing_indexes = pc.list_indexes()
+                index_names = [index['name'] for index in existing_indexes]
+                if PINECONE_INDEX_NAME not in index_names:
+                    logger.info(f"Creating Pinecone index: {PINECONE_INDEX_NAME}")
+                    pc.create_index(
+                        name=PINECONE_INDEX_NAME,
+                        dimension=384,
+                        metric='cosine',
+                        spec=ServerlessSpec(cloud='aws', region='us-east-1')
+                    )
+                    time.sleep(10)
+                    logger.info(f"Index {PINECONE_INDEX_NAME} created successfully")
+                else:
+                    logger.info(f"Index {PINECONE_INDEX_NAME} already exists")
+                self._pinecone_index = pc.Index(PINECONE_INDEX_NAME)
+            except Exception as e:
+                if "ALREADY_EXISTS" in str(e):
+                    logger.info(f"Index {PINECONE_INDEX_NAME} already exists, proceeding with existing index")
+                    self._pinecone_index = pc.Index(PINECONE_INDEX_NAME)
+                else:
+                    logger.error(f"Error initializing Pinecone index: {str(e)}")
+                    raise
+        return self._pinecone_index
+
+    def get_hf_embeddings(self):
+        if self._hf_embeddings is None:
+            from huggingface_hub import InferenceClient
+            class HFEmbeddings:
+                def __init__(self, model_name="sentence-transformers/all-MiniLM-L6-v2"):
+                    self.client = InferenceClient(api_key=HUGGINGFACE_API_KEY)
+                    self.model_name = model_name
+
+                def embed_documents(self, texts: List[str]) -> List[List[float]]:
+                    try:
+                        if not texts:
+                            return []
+                        response = self.client.feature_extraction(texts, model=self.model_name)
+                        return response.tolist()
+                    except Exception as e:
+                        logger.error(f"Error generating embeddings via API: {str(e)}")
+                        return []
+
+                def embed_query(self, text: str) -> List[float]:
+                    embedding = self.embed_documents([text])
+                    return embedding[0] if embedding else []
+
+            try:
+                self._hf_embeddings = HFEmbeddings()
+                logger.info("Hugging Face embeddings initialized")
+            except Exception as e:
+                logger.error(f"Error initializing HF embeddings: {str(e)}")
+                raise
+        return self._hf_embeddings
+
+    def get_llm(self):
+        if self._llm is None:
+            import google.generativeai as genai
+            from langchain_google_genai import GoogleGenerativeAI
+            try:
+                genai.configure(api_key=GOOGLE_API_KEY)
+                self._llm = GoogleGenerativeAI(model='gemini-1.5-flash', google_api_key=GOOGLE_API_KEY)
+                logger.info("Google Generative AI initialized")
+            except Exception as e:
+                logger.error(f"Error initializing Google Generative AI: {str(e)}")
+                raise
+        return self._llm
+
+    def initialize_nltk(self):
+        if not self._nltk_initialized:
+            import nltk
+            try:
+                nltk.data.find('tokenizers/punkt')
+            except LookupError:
+                nltk.download('punkt')
+            self._nltk_initialized = True
+            logger.info("NLTK data initialized")
+
+# Initialize lazy loader
+lazy_init = LazyInitializer()
 
 # Timeout decorator for Windows
 def timeout(seconds):
@@ -196,6 +213,7 @@ def timeout(seconds):
 # Rate limiting helper with timeout
 @timeout(60)
 def rate_limit_llm(func, *args, max_retries=3, delay=2):
+    import google.generativeai as genai
     for attempt in range(max_retries):
         try:
             return func(*args)
@@ -220,6 +238,7 @@ def rate_limit_llm(func, *args, max_retries=3, delay=2):
 # Database initialization
 def init_db():
     try:
+        supabase = lazy_init.get_supabase()
         supabase.table('users').select("*").limit(1).execute()
         logger.info("Database tables verified")
     except postgrest.exceptions.APIError as e:
@@ -272,6 +291,8 @@ def require_auth(f):
 
 @timeout(60)
 def extract_text_from_pdf(file_content):
+    import PyPDF2
+    import io
     try:
         pdf_reader = PyPDF2.PdfReader(io.BytesIO(file_content))
         text = ""
@@ -284,6 +305,7 @@ def extract_text_from_pdf(file_content):
         return None
 
 def chunk_text(text, chunk_size=1000, chunk_overlap=200):
+    from langchain.text_splitter import RecursiveCharacterTextSplitter
     try:
         text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=chunk_size,
@@ -298,6 +320,8 @@ def chunk_text(text, chunk_size=1000, chunk_overlap=200):
 
 @timeout(60)
 def create_pinecone_vectors(chunks, note_id, user_id, batch_size=5):
+    pinecone_index = lazy_init.get_pinecone_index()
+    hf_embeddings = lazy_init.get_hf_embeddings()
     try:
         namespace = f"user_{user_id}_note_{note_id}"
         
@@ -341,14 +365,16 @@ def create_pinecone_vectors(chunks, note_id, user_id, batch_size=5):
         
         return True, namespace
     except TimeoutError:
-        logger.error("Pinecone vector creation timed out after 30 seconds")
+        logger.error("Pinecone vector creation timed out after 60 seconds")
         return False, None
-    except (ValueError, pinecone.exceptions.PineconeException) as e:
+    except Exception as e:
         logger.error(f"Error creating Pinecone vectors: {str(e)}")
         return False, None
 
 @timeout(60)
 def get_relevant_chunks(note_id, user_id, query, top_k=5):
+    pinecone_index = lazy_init.get_pinecone_index()
+    hf_embeddings = lazy_init.get_hf_embeddings()
     try:
         namespace = f"user_{user_id}_note_{note_id}"
         query_emb = hf_embeddings.embed_query(query)
@@ -363,18 +389,19 @@ def get_relevant_chunks(note_id, user_id, query, top_k=5):
         logger.info(f"Retrieved {len(chunks)} chunks with scores: {scores}")
         return chunks
     except TimeoutError:
-        logger.error("Pinecone query timed out after 15 seconds")
+        logger.error("Pinecone query timed out after 60 seconds")
         return []
-    except pinecone.exceptions.PineconeException as e:
+    except Exception as e:
         logger.error(f"Error retrieving chunks from Pinecone: {str(e)}")
         return []
 
 def delete_pinecone_vectors(note_id, user_id):
+    pinecone_index = lazy_init.get_pinecone_index()
     try:
         namespace = f"user_{user_id}_note_{note_id}"
         pinecone_index.delete(delete_all=True, namespace=namespace)
         logger.info(f"Deleted vectors for note {note_id} in namespace {namespace}")
-    except pinecone.exceptions.PineconeException as e:
+    except Exception as e:
         logger.error(f"Error deleting Pinecone vectors: {str(e)}")
 
 # Markdown to HTML formatting
@@ -383,10 +410,11 @@ def markdown_to_html(text):
         return markdown.markdown(text, extensions=['extra'])
     except Exception as e:
         logger.error(f"Error converting Markdown to HTML: {str(e)}")
-        return text  # Fallback to plain text if conversion fails
+        return text
 
 @timeout(120)
 def summarize_text(text):
+    import google.generativeai as genai
     def generate_summary():
         model = genai.GenerativeModel('gemini-1.5-flash')
         prompt = f"""
@@ -410,6 +438,7 @@ def summarize_text(text):
 
 @timeout(60)
 def upload_to_cloudinary(file_content, resource_type, folder):
+    cloudinary = lazy_init.get_cloudinary()
     try:
         upload_result = cloudinary.uploader.upload(
             file_content,
@@ -417,17 +446,19 @@ def upload_to_cloudinary(file_content, resource_type, folder):
             folder=folder
         )
         return upload_result['secure_url']
-    except cloudinary.exceptions.Error as e:
+    except Exception as e:
         logger.error(f"Cloudinary error: {str(e)}")
         raise
 
 # Retry decorator for Supabase queries
 @retry(httpx.ConnectError, tries=3, delay=1, backoff=2)
 def check_pdf_count(user_id, twenty_four_hours_ago):
+    supabase = lazy_init.get_supabase()
     return supabase.table('notes').select('count').eq('user_id', user_id).eq('file_type', 'pdf').gte('created_at', twenty_four_hours_ago.isoformat()).execute()
 
 @retry(httpx.ConnectError, tries=3, delay=1, backoff=2)
 def check_chat_count(user_id, twenty_four_hours_ago):
+    supabase = lazy_init.get_supabase()
     return supabase.table('chats').select('count').eq('user_id', user_id).gte('created_at', twenty_four_hours_ago.isoformat()).execute()
 
 # Routes
@@ -454,6 +485,7 @@ def signup():
             logger.warning("Missing email or password in signup request")
             return jsonify({'error': 'Email and password required'}), 400
         
+        supabase = lazy_init.get_supabase()
         try:
             existing_user = supabase.table('users').select("*").eq('email', email).execute()
             if existing_user.data:
@@ -519,6 +551,7 @@ def verify_otp():
             logger.warning("Session expired during OTP verification")
             return jsonify({'error': 'Session expired. Please try again'}), 400
             
+        supabase = lazy_init.get_supabase()
         try:
             verify_response = supabase.auth.verify_otp({
                 "email": email,
@@ -586,6 +619,7 @@ def login():
             logger.warning("Missing email or password in login request")
             return jsonify({'error': 'Email and password required'}), 400
         
+        supabase = lazy_init.get_supabase()
         try:
             result = supabase.table('users').select("*").eq('email', email).execute()
         except postgrest.exceptions.APIError as e:
@@ -635,12 +669,10 @@ def upload_pdf():
         
         user_id = request.current_user['user_id']
         
-        # Check PDF upload limit (5 per 24 hours)
         now = datetime.now(timezone.utc)
         twenty_four_hours_ago = now - timedelta(hours=24)
         reset_time = now + timedelta(hours=24)
         reset_time_str = reset_time.strftime("%d/%m/%Y %H:%M")
-        logger.info(f"Checking PDF upload count for user {user_id} since {twenty_four_hours_ago.isoformat()}")
         try:
             count_result = check_pdf_count(user_id, twenty_four_hours_ago)
             pdf_count = count_result.data[0]['count'] if count_result.data else 0
@@ -662,7 +694,7 @@ def upload_pdf():
         
         file_content = file.read()
         file_size = len(file_content)
-        max_size = 5 * 1024 * 1024  # 5MB limit
+        max_size = 5 * 1024 * 1024
         
         if file_size > max_size:
             logger.warning(f"File too large: {file_size} bytes")
@@ -672,9 +704,9 @@ def upload_pdf():
             secure_url = upload_to_cloudinary(file_content, "raw", "smart-notes/pdfs")
             logger.info(f"File uploaded to Cloudinary: {secure_url}")
         except TimeoutError:
-            logger.error("Cloudinary upload timed out after 30 seconds")
+            logger.error("Cloudinary upload timed out after 60 seconds")
             return jsonify({'error': 'File upload to Cloudinary timed out'}), 504
-        except cloudinary.exceptions.Error as e:
+        except Exception as e:
             logger.error(f"Cloudinary error during PDF upload: {str(e)}")
             return jsonify({'error': f'Failed to upload PDF to Cloudinary: {str(e)}'}), 500
         
@@ -685,9 +717,9 @@ def upload_pdf():
                 return jsonify({'error': 'Could not extract text from PDF'}), 400
             text = text.replace('\x00', '')
         except TimeoutError:
-            logger.error("PDF processing timed out after 30 seconds")
+            logger.error("PDF processing timed out after 60 seconds")
             return jsonify({'error': 'PDF processing timed out'}), 504
-        except PyPDF2.errors.PdfReadError as e:
+        except Exception as e:
             logger.error(f"PDF processing error: {str(e)}")
             return jsonify({'error': f'Failed to process PDF content: {str(e)}'}), 400
         
@@ -698,9 +730,10 @@ def upload_pdf():
                 return jsonify({'error': 'Failed to generate summary'}), 500
             logger.info("Summary generated successfully")
         except TimeoutError:
-            logger.error("Summary generation timed out after 15 seconds")
+            logger.error("Summary generation timed out after 120 seconds")
             return jsonify({'error': 'Summary generation timed out'}), 504
         
+        supabase = lazy_init.get_supabase()
         try:
             note_data = {
                 'user_id': user_id,
@@ -723,13 +756,14 @@ def upload_pdf():
             logger.error(f"Connection error to Supabase storing note: {str(e)}")
             return jsonify({'error': f'Failed to connect to database: {str(e)}'}), 503
         
+        lazy_init.initialize_nltk()
         chunks = chunk_text(text)
         
         logger.info(f"Creating vector store with {len(chunks)} chunks using HF embeddings...")
         try:
             success, namespace = create_pinecone_vectors(chunks, note_id, user_id)
         except TimeoutError:
-            logger.error("Pinecone vector creation timed out after 30 seconds")
+            logger.error("Pinecone vector creation timed out after 60 seconds")
             success, namespace = False, None
         
         if success and namespace:
@@ -764,6 +798,7 @@ def upload_pdf():
 def delete_note(note_id):
     try:
         user_id = request.current_user['user_id']
+        supabase = lazy_init.get_supabase()
         
         try:
             note_result = supabase.table('notes').select("*").eq('id', note_id).eq('user_id', user_id).eq('deleted', False).execute()
@@ -788,9 +823,10 @@ def delete_note(note_id):
                         public_id_with_folder = '/'.join(url_parts[7:])
                         public_id = public_id_with_folder.rsplit('.', 1)[0]
                         resource_type = "raw" if note['file_type'] == 'pdf' else "video"
+                        cloudinary = lazy_init.get_cloudinary()
                         cloudinary.uploader.destroy(public_id, resource_type=resource_type)
                         logger.info(f"Deleted file from Cloudinary: {public_id}")
-            except cloudinary.exceptions.Error as e:
+            except Exception as e:
                 logger.error(f"Error deleting from Cloudinary: {str(e)}")
         
         try:
@@ -828,8 +864,8 @@ def chat():
             return jsonify({'error': 'Message required'}), 400
         
         user_id = request.current_user['user_id']
+        supabase = lazy_init.get_supabase()
         
-        # Check daily chat query limit (20 per 24 hours)
         now = datetime.now(timezone.utc)
         twenty_four_hours_ago = now - timedelta(hours=24)
         reset_time = now + timedelta(hours=24)
@@ -853,7 +889,6 @@ def chat():
             logger.error(f"Unexpected error checking chat count: {str(e)}")
             return jsonify({'error': f'Unexpected error checking chat limit: {str(e)}'}), 500
         
-        # Get context
         context = ""
         chat_history = []
         relevant_context = ""
@@ -874,7 +909,7 @@ def chat():
                             logger.info("No relevant chunks retrieved, using fallback context")
                             relevant_context = context[:2000]
                     except TimeoutError:
-                        logger.error("Pinecone query timed out after 15 seconds")
+                        logger.error("Pinecone query timed out after 60 seconds")
                         relevant_context = context[:2000]
                 
                 try:
@@ -901,6 +936,7 @@ def chat():
         final_context = relevant_context if relevant_context else context
         
         def generate_response():
+            import google.generativeai as genai
             model = genai.GenerativeModel('gemini-1.5-flash')
             prompt = f"""
 [SYSTEM INSTRUCTIONS]
@@ -968,7 +1004,7 @@ Ensure the response is **professional, clear, and suitable for inclusion in a PD
                 logger.warning("Failed to generate response after retries")
                 return jsonify({'error': 'Error generating response'}), 500
         except TimeoutError:
-            logger.error("Response generation timed out after 15 seconds")
+            logger.error("Response generation timed out after 60 seconds")
             return jsonify({'error': 'Response generation timed out'}), 504
         
         try:
@@ -1000,6 +1036,7 @@ Ensure the response is **professional, clear, and suitable for inclusion in a PD
 def get_notes():
     try:
         user_id = request.current_user['user_id']
+        supabase = lazy_init.get_supabase()
         try:
             result = supabase.table('notes').select("*").eq('user_id', user_id).eq('deleted', False).order('created_at', desc=True).execute()
             notes = result.data
@@ -1015,7 +1052,6 @@ def get_notes():
         logger.error(f"Unexpected error during notes retrieval: {str(e)}")
         return jsonify({'error': f'Unexpected error: {str(e)}'}), 500
 
-
 @app.route('/api/notes/<note_id>/rename', methods=['PUT'])
 @require_auth
 def rename_note(note_id):
@@ -1028,6 +1064,7 @@ def rename_note(note_id):
             logger.warning("Missing new title in rename request")
             return jsonify({'error': 'New title is required'}), 400
             
+        supabase = lazy_init.get_supabase()
         try:
             note_result = supabase.table('notes').select("*").eq('id', note_id).eq('user_id', user_id).eq('deleted', False).execute()
             if not note_result.data:
@@ -1060,6 +1097,7 @@ def rename_note(note_id):
 def get_chat_history(note_id):
     try:
         user_id = request.current_user['user_id']
+        supabase = lazy_init.get_supabase()
         try:
             note_result = supabase.table('notes').select("*").eq('id', note_id).eq('user_id', user_id).eq('deleted', False).execute()
             if not note_result.data:
@@ -1110,7 +1148,7 @@ def change_password():
             logger.warning("New password too short")
             return jsonify({'error': 'New password must be at least 6 characters'}), 400
         
-        # Verify user and old password
+        supabase = lazy_init.get_supabase()
         try:
             user = supabase.table('users').select('id, email, password').eq('email', email).execute()
             if not user.data or user.data[0]['password'] != old_password:
@@ -1123,7 +1161,6 @@ def change_password():
             logger.error(f"Connection error to Supabase verifying credentials: {str(e)}")
             return jsonify({'error': f'Failed to connect to database: {str(e)}'}), 503
         
-        # Update password
         try:
             supabase.table('users').update({
                 'password': new_password
@@ -1141,7 +1178,6 @@ def change_password():
         logger.error(f"Unexpected error in change-password endpoint: {str(e)}")
         return jsonify({'error': f'Unexpected error: {str(e)}'}), 500
 
-
 from reportlab.lib.pagesizes import letter
 from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, ListFlowable, ListItem, Preformatted
@@ -1156,8 +1192,8 @@ def export_note_to_pdf(note_id):
     try:
         user_id = request.current_user['user_id']
         logger.info(f"Exporting note {note_id} to PDF for user {user_id}")
+        supabase = lazy_init.get_supabase()
 
-        # Fetch note data
         try:
             note_result = supabase.table('notes').select("title, summary").eq('id', note_id).eq('user_id', user_id).eq('deleted', False).execute()
             if not note_result.data:
@@ -1171,7 +1207,6 @@ def export_note_to_pdf(note_id):
             logger.error(f"Connection error to Supabase retrieving note: {str(e)}")
             return jsonify({'error': f'Failed to connect to database: {str(e)}'}), 503
 
-        # Fetch chat history
         try:
             chat_result = supabase.table('chats').select('user_message, ai_response, created_at') \
                 .eq('user_id', user_id).eq('note_id', note_id).order('created_at', desc=False).execute()
@@ -1184,12 +1219,10 @@ def export_note_to_pdf(note_id):
             logger.error(f"Connection error to Supabase retrieving chat history: {str(e)}")
             return jsonify({'error': f'Failed to connect to database: {str(e)}'}), 503
 
-        # Create PDF
         buffer = BytesIO()
         doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=72, leftMargin=72, topMargin=72, bottomMargin=18)
         styles = getSampleStyleSheet()
 
-        # Custom styles for futuristic look
         title_style = ParagraphStyle(
             'TitleStyle',
             parent=styles['Title'],
@@ -1267,7 +1300,6 @@ def export_note_to_pdf(note_id):
 
         story = []
 
-        # Helper function to convert inner HTML to ReportLab markup
         def html_to_reportlab(tag):
             markup = ''
             for child in tag.contents:
@@ -1287,7 +1319,6 @@ def export_note_to_pdf(note_id):
                     markup += html_to_reportlab(child)
             return markup
 
-        # Recursive function to parse HTML tag to ReportLab flowables
         def parse_html_tag(tag, style, code_style, highlight_style):
             if not tag:
                 return None
@@ -1320,7 +1351,6 @@ def export_note_to_pdf(note_id):
             elif tag.string:
                 return Paragraph(tag.string.strip(), style)
             else:
-                # Recursive for children
                 children = []
                 for child in tag.children:
                     child_elem = parse_html_tag(child, style, code_style, highlight_style)
@@ -1331,14 +1361,12 @@ def export_note_to_pdf(note_id):
                             children.append(child_elem)
                 return children if children else None
 
-        # Helper function to parse HTML content
         def parse_html_content(html_content, content_style, code_style, highlight_style):
             if not html_content:
                 return [Paragraph("No content available.", content_style)]
             
             soup = BeautifulSoup(html_content, 'html.parser')
             elements = []
-            current_list = None
             for tag in soup.children:
                 elem = parse_html_tag(tag, content_style, code_style, highlight_style)
                 if elem:
@@ -1348,32 +1376,23 @@ def export_note_to_pdf(note_id):
                         elements.append(elem)
             return elements
 
-        # Add title
         story.append(Paragraph(note['title'], title_style))
         story.append(Spacer(1, 24))
-
-        # Add summary section
         story.append(Paragraph("Summary", heading_style))
         story.extend(parse_html_content(note['summary'], body_style, code_style, highlight_style))
         story.append(Spacer(1, 36))
-
-        # Add chat history section
         story.append(Paragraph("Chat History", heading_style))
         if chats:
             for i, chat in enumerate(chats, 1):
-                # Numbered question
                 story.append(Paragraph(f"{i}. Question", subheading_style))
                 story.append(Paragraph(chat['user_message'], question_style))
                 story.append(Spacer(1, 12))
-
-                # Answer
                 story.append(Paragraph("Answer", subheading_style))
                 story.extend(parse_html_content(chat['ai_response'], answer_style, code_style, highlight_style))
                 story.append(Spacer(1, 36))
         else:
             story.append(Paragraph("No chat history available.", body_style))
 
-        # Build PDF
         doc.build(story)
         buffer.seek(0)
         pdf_data = buffer.getvalue()
@@ -1389,8 +1408,6 @@ def export_note_to_pdf(note_id):
     except Exception as e:
         logger.error(f"Unexpected error during PDF export: {str(e)}")
         return jsonify({'error': f'Unexpected error: {str(e)}'}), 500
-
-
 
 if __name__ == '__main__':
     init_db()
