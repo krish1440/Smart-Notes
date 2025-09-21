@@ -16,6 +16,7 @@ import warnings
 import httpx
 from retry import retry
 import postgrest.exceptions
+import fitz  # PyMuPDF for PDF processing
 
 # Configure logging
 logging.basicConfig(
@@ -144,6 +145,7 @@ class LazyInitializer:
                     self.client = InferenceClient(api_key=HUGGINGFACE_API_KEY)
                     self.model_name = model_name
 
+                @retry(httpx.HTTPError, tries=3, delay=2, backoff=2)
                 def embed_documents(self, texts: List[str]) -> List[List[float]]:
                     try:
                         if not texts:
@@ -291,17 +293,16 @@ def require_auth(f):
 
 @timeout(60)
 def extract_text_from_pdf(file_content):
-    import PyPDF2
-    import io
     try:
-        pdf_reader = PyPDF2.PdfReader(io.BytesIO(file_content))
+        doc = fitz.open(stream=file_content, filetype="pdf")
         text = ""
-        for page in pdf_reader.pages:
-            page_text = page.extract_text() or ""
+        for page in doc:
+            page_text = page.get_text("text") or ""
             text += page_text + "\n"
+        doc.close()
         return text
-    except PyPDF2.errors.PdfReadError as e:
-        logger.error(f"Error extracting PDF text: {str(e)}")
+    except Exception as e:
+        logger.error(f"Error extracting PDF text with PyMuPDF: {str(e)}")
         return None
 
 def chunk_text(text, chunk_size=1000, chunk_overlap=200):
@@ -312,8 +313,12 @@ def chunk_text(text, chunk_size=1000, chunk_overlap=200):
             chunk_overlap=chunk_overlap,
             length_function=len,
         )
-        chunks = text_splitter.split_text(text)
-        return chunks
+        def stream_chunks():
+            for i in range(0, len(text), chunk_size):
+                chunk = text[i:i + chunk_size]
+                yield from text_splitter.split_text(chunk)
+        
+        return list(stream_chunks())
     except ValueError as e:
         logger.error(f"Error chunking text: {str(e)}")
         return []
@@ -324,29 +329,32 @@ def create_pinecone_vectors(chunks, note_id, user_id, batch_size=5):
     hf_embeddings = lazy_init.get_hf_embeddings()
     try:
         namespace = f"user_{user_id}_note_{note_id}"
-        
-        embeddings_list = hf_embeddings.embed_documents(chunks)
-        if not embeddings_list:
-            raise ValueError("No embeddings generated")
-        
         vectors = []
-        for i, (chunk, emb) in enumerate(zip(chunks, embeddings_list)):
-            vec_id = f"chunk_{i}_{uuid.uuid4()}"
-            vectors.append({
-                "id": vec_id,
-                "values": emb,
-                "metadata": {
-                    'note_id': str(note_id),
-                    'user_id': str(user_id),
-                    'chunk_id': i,
-                    'text': chunk[:500]
-                }
-            })
+        chunk_id = 0
         
-        for i in range(0, len(vectors), batch_size):
-            batch = vectors[i:i+batch_size]
-            pinecone_index.upsert(vectors=batch, namespace=namespace)
-            logger.info(f"Upserted batch {(i//batch_size) + 1} of {(len(vectors) + batch_size - 1)//batch_size}")
+        for i in range(0, len(chunks), batch_size):
+            batch_chunks = chunks[i:i + batch_size]
+            embeddings = hf_embeddings.embed_documents(batch_chunks)
+            if not embeddings:
+                raise ValueError(f"No embeddings generated for batch starting at index {i}")
+            
+            for chunk, emb in zip(batch_chunks, embeddings):
+                vec_id = f"chunk_{chunk_id}_{uuid.uuid4()}"
+                vectors.append({
+                    "id": vec_id,
+                    "values": emb,
+                    "metadata": {
+                        'note_id': str(note_id),
+                        'user_id': str(user_id),
+                        'chunk_id': chunk_id,
+                        'text': chunk[:500]
+                    }
+                })
+                chunk_id += 1
+            
+            pinecone_index.upsert(vectors=vectors, namespace=namespace)
+            logger.info(f"Upserted batch {(i//batch_size) + 1} of {(len(chunks) + batch_size - 1)//batch_size}")
+            vectors = []  # Clear batch to free memory
         
         if chunks:
             test_emb = hf_embeddings.embed_query(chunks[0][:500])
