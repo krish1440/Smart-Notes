@@ -1,0 +1,912 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Home - Smart Notes</title>
+    <meta name="description" content="Smart Notes: AI-powered academic assistant for PDF summarization and interactive Q&A. Upload files, get summaries, and enhance learning.">
+    <meta name="keywords" content="Smart Notes, AI assistant, PDF summarization, academic tool, study aid, note-taking, AI learning">
+    <meta name="author" content="Krish Chaudhary">
+    <meta name="robots" content="index, follow">
+    <!-- Open Graph Meta Tags -->
+    <meta property="og:title" content="Smart Notes - AI-Powered Academic Assistant">
+    <meta property="og:description" content="Transform PDFs into concise summaries and interactive Q&A with Smart Notes, your AI-powered study companion.">
+    <meta property="og:image" content="https://res.cloudinary.com/dyhe9rbjz/image/upload/v1758373897/otreuwn5bi37tlaaqndt.png">
+    <meta property="og:url" content="https://smartnotes.example.com">
+    <meta property="og:type" content="website">
+    <!-- Twitter Card Meta Tags -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Smart Notes - AI-Powered Academic Assistant">
+    <meta name="twitter:description" content="Transform PDFs into concise summaries and interactive Q&A with Smart Notes, your AI-powered study companion.">
+    <meta name="twitter:image" content="https://res.cloudinary.com/dyhe9rbjz/image/upload/v1758373897/otreuwn5bi37tlaaqndt.png">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: linear-gradient(135deg, #1e1e2f 0%, #2a2a4a 100%);
+            color: #ffffff;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        .navbar {
+            background: rgba(30, 30, 47, 0.95);
+            backdrop-filter: blur(10px);
+            padding: 1rem 2rem;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            display: flex;
+            justify-content: flex-start;
+            align-items: center;
+            z-index: 1000;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+        }
+
+        .navbar .logo {
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: #667eea;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .navbar .logo span {
+            color: #ffffff;
+        }
+
+        .hero {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+            background: url('https://res.cloudinary.com/dyhe9rbjz/image/upload/v1758373897/otreuwn5bi37tlaaqndt.png') no-repeat center center/cover;
+            background-attachment: fixed;
+            position: relative;
+            opacity: 0;
+            transition: opacity 0.5s ease-in-out;
+        }
+
+        .hero.loaded {
+            opacity: 1;
+        }
+
+        .hero::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.65);
+            z-index: 1;
+        }
+
+        .hero-content {
+            text-align: center;
+            max-width: 900px;
+            position: relative;
+            z-index: 2;
+            padding: 1.5rem;
+        }
+
+        .hero-content h1 {
+            font-size: 3.5rem;
+            font-weight: 800;
+            margin-bottom: 1rem;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .hero-content p {
+            font-size: 1.2rem;
+            line-height: 1.8;
+            color: #d1d5db;
+            margin-bottom: 2rem;
+        }
+
+        .cta-button {
+            display: inline-block;
+            padding: 1rem 2rem;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #ffffff;
+            font-size: 1.1rem;
+            font-weight: 600;
+            border-radius: 50px;
+            text-decoration: none;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .cta-button:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        /* Loading Spinner Styles */
+        .hero-loading {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, #1e1e2f 0%, #2a2a4a 100%);
+            z-index: 3;
+            opacity: 1;
+            transition: opacity 0.5s ease-in-out;
+        }
+
+        .hero-loading.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .spinner {
+            width: 60px;
+            height: 60px;
+            border: 6px solid #667eea;
+            border-top-color: transparent;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .section {
+            padding: 5rem 2rem;
+            text-align: center;
+        }
+
+        .section h2 {
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+            color: #ffffff;
+        }
+
+        .section p {
+            font-size: 1.1rem;
+            color: #d1d5db;
+            max-width: 800px;
+            margin: 0 auto 2rem;
+        }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 2rem;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .feature-card {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            padding: 2rem;
+            transition: transform 0.3s ease, background 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+
+        .feature-card:hover {
+            transform: translateY(-10px);
+            background: rgba(255, 255, 255, 0.15);
+        }
+
+        .feature-card i {
+            font-size: 2.5rem;
+            color: #667eea;
+            margin-bottom: 1rem;
+        }
+
+        .feature-card h3 {
+            font-size: 1.5rem;
+            margin-bottom: 0.5rem;
+            color: #ffffff;
+        }
+
+        .feature-card p {
+            font-size: 1rem;
+            color: #d1d5db;
+        }
+
+        .limits-section {
+            background: linear-gradient(135deg, #2a2a4a 0%, #1e1e2f 100%);
+        }
+
+        .limits-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 2rem;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .limit-card {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            padding: 2rem;
+            transition: transform 0.3s ease, background 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+
+        .limit-card:hover {
+            transform: translateY(-10px);
+            background: rgba(255, 255, 255, 0.15);
+        }
+
+        .limit-card h3 {
+            font-size: 1.5rem;
+            margin-bottom: 0.5rem;
+            color: #ffffff;
+        }
+
+        .limit-card p {
+            font-size: 1rem;
+            color: #d1d5db;
+        }
+
+        .about-section {
+            background: linear-gradient(135deg, #2a2a4a 0%, #1e1e2f 100%);
+        }
+
+        .about-content {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 2rem;
+            max-width: 1200px;
+            margin: 0 auto;
+            flex-wrap: wrap;
+        }
+
+        .about-text {
+            flex: 1;
+            min-width: 300px;
+        }
+
+        .about-image {
+            flex: 1;
+            min-width: 300px;
+            text-align: center;
+        }
+
+        .about-image img {
+            width: 100%;
+            max-width: 350px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            transition: transform 0.3s ease;
+        }
+
+        .about-image img:hover {
+            transform: scale(1.05);
+        }
+
+        .social-links {
+            margin-top: 1rem;
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .social-links a {
+            display: inline-block;
+            transition: transform 0.3s ease;
+        }
+
+        .social-links a img {
+            width: 40px;
+            height: 40px;
+            transition: transform 0.3s ease, opacity 0.3s ease;
+        }
+
+        .social-links a img:hover {
+            transform: scale(1.1);
+            opacity: 0.8;
+        }
+
+        .contact-section {
+            background: linear-gradient(135deg, #2a2a4a 0%, #1e1e2f 100%);
+            padding: 5rem 2rem;
+            text-align: center;
+        }
+
+        .contact-section h2 {
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+            color: #ffffff;
+        }
+
+        .contact-section p {
+            font-size: 1.1rem;
+            color: #d1d5db;
+            max-width: 800px;
+            margin: 0 auto 3rem;
+        }
+
+        .contact-content {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .contact-form {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 2rem;
+            text-align: left;
+        }
+
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: #ffffff;
+            font-weight: 500;
+        }
+
+        .form-group input,
+        .form-group textarea {
+            width: 100%;
+            padding: 0.8rem;
+            background: rgba(255, 255, 255, 0.15);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            color: #ffffff;
+            font-size: 1rem;
+            transition: border-color 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .form-group input:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .form-group input::placeholder,
+        .form-group textarea::placeholder {
+            color: #9ca3af;
+        }
+
+        .form-group textarea {
+            resize: vertical;
+            min-height: 120px;
+        }
+
+        .submit-button {
+            width: 100%;
+            padding: 1rem;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #ffffff;
+            font-size: 1.1rem;
+            font-weight: 600;
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .submit-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 15px rgba(102, 126, 234, 0.3);
+        }
+
+        .submit-button:disabled {
+            opacity: 0.7;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .form-message {
+            padding: 1rem;
+            margin-top: 1rem;
+            border-radius: 8px;
+            font-weight: 500;
+            display: none;
+        }
+
+        .form-message.success {
+            background: rgba(34, 197, 94, 0.2);
+            color: #22c55e;
+            border: 1px solid rgba(34, 197, 94, 0.3);
+        }
+
+        .form-message.error {
+            background: rgba(239, 68, 68, 0.2);
+            color: #ef4444;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+
+        .thank-you-message {
+            display: none;
+            text-align: center;
+            padding: 2rem;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            backdrop-filter: blur(10px);
+            margin-top: 1rem;
+        }
+
+        .thank-you-message h3 {
+            font-size: 1.8rem;
+            color: #ffffff;
+            margin-bottom: 1rem;
+        }
+
+        .thank-you-message p {
+            font-size: 1.1rem;
+            color: #d1d5db;
+            margin-bottom: 1.5rem;
+        }
+
+        footer {
+            background: rgba(30, 30, 47, 0.95);
+            padding: 2rem;
+            text-align: center;
+            color: #d1d5db;
+        }
+
+        footer p {
+            font-size: 0.9rem;
+        }
+
+        /* Advanced Mobile Responsiveness */
+        @media (max-width: 1024px) {
+            .hero-content h1 {
+                font-size: 3rem;
+            }
+
+            .hero-content p {
+                font-size: 1.1rem;
+            }
+
+            .section h2 {
+                font-size: 2.2rem;
+            }
+
+            .features-grid, .limits-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        @media (max-width: 768px) {
+            .navbar {
+                padding: 1rem;
+                flex-wrap: wrap;
+                gap: 1rem;
+            }
+
+            .navbar .logo {
+                font-size: 1.5rem;
+            }
+
+            .hero {
+                background-attachment: scroll;
+            }
+
+            .hero-content h1 {
+                font-size: 2.5rem;
+            }
+
+            .hero-content p {
+                font-size: 1rem;
+            }
+
+            .cta-button {
+                padding: 0.8rem 1.5rem;
+                font-size: 1rem;
+            }
+
+            .section h2 {
+                font-size: 2rem;
+            }
+
+            .section p {
+                font-size: 1rem;
+            }
+
+            .about-content {
+                flex-direction: column;
+            }
+
+            .about-image img {
+                max-width: 300px;
+            }
+
+            .social-links a img {
+                width: 36px;
+                height: 36px;
+            }
+
+            .contact-form {
+                padding: 1.5rem;
+            }
+
+            .features-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .navbar {
+                padding: 0.8rem;
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .navbar .logo {
+                font-size: 1.3rem;
+            }
+
+            .hero-content {
+                padding: 1rem;
+            }
+
+            .hero-content h1 {
+                font-size: 1.8rem;
+            }
+
+            .hero-content p {
+                font-size: 0.9rem;
+            }
+
+            .cta-button {
+                padding: 0.7rem 1.2rem;
+                font-size: 0.9rem;
+            }
+
+            .section {
+                padding: 3rem 1rem;
+            }
+
+            .contact-section {
+                padding: 3rem 1rem;
+            }
+
+            .section h2 {
+                font-size: 1.8rem;
+            }
+
+            .section p {
+                font-size: 0.9rem;
+            }
+
+            .features-grid, .limits-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .feature-card, .limit-card {
+                padding: 1.5rem;
+            }
+
+            .feature-card h3, .limit-card h3 {
+                font-size: 1.3rem;
+            }
+
+            .feature-card p, .limit-card p {
+                font-size: 0.9rem;
+            }
+
+            .about-image img {
+                max-width: 250px;
+            }
+
+            .social-links {
+                flex-direction: row;
+                gap: 0.75rem;
+            }
+
+            .social-links a img {
+                width: 32px;
+                height: 32px;
+            }
+
+            .contact-form {
+                padding: 1rem;
+            }
+
+            .form-group input,
+            .form-group textarea {
+                padding: 0.7rem;
+                font-size: 0.9rem;
+            }
+        }
+
+        @media (max-width: 360px) {
+            .hero-content h1 {
+                font-size: 1.5rem;
+            }
+
+            .hero-content p {
+                font-size: 0.85rem;
+            }
+
+            .cta-button {
+                padding: 0.6rem 1rem;
+                font-size: 0.85rem;
+            }
+
+            .section h2 {
+                font-size: 1.6rem;
+            }
+
+            .section p {
+                font-size: 0.85rem;
+            }
+
+            .about-image img {
+                max-width: 200px;
+            }
+
+            .social-links a img {
+                width: 28px;
+                height: 28px;
+            }
+        }
+    </style>
+</head>
+<link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
+<body>
+    <nav class="navbar">
+        <div class="logo">📚 <span>Smart Notes</span></div>
+    </nav>
+
+    <section class="hero" id="hero">
+        <div class="hero-loading" id="hero-loading">
+            <div class="spinner"></div>
+        </div>
+        <div class="hero-content">
+            <h1>Welcome to Smart Notes</h1>
+            <p>Your AI-powered academic assistant that transforms PDFs into concise summaries and interactive Q&A sessions. Upload your files, get summaries, and ask questions to deepen your understanding.</p>
+            <a href="/index" class="cta-button">Get Started</a>
+        </div>
+    </section>
+
+    <section class="section">
+        <h2>Why Choose Smart Notes?</h2>
+        <p>Discover the features that make Smart Notes the ultimate tool for students and lifelong learners.</p>
+        <div class="features-grid">
+            <div class="feature-card">
+                <i>📁</i>
+                <h3>Upload & Summarize</h3>
+                <p>Easily upload PDFs files and get concise, AI-generated summaries instantly.</p>
+            </div>
+            <div class="feature-card">
+                <i>🤖</i>
+                <h3>Interactive Q&A</h3>
+                <p>Ask questions about your content and get detailed, context-aware responses from our AI assistant.</p>
+            </div>
+            <div class="feature-card">
+                <i>📚</i>
+                <h3>Organized Notes</h3>
+                <p>Manage your notes efficiently with a user-friendly dashboard and seamless file organization.</p>
+            </div>
+            <div class="feature-card">
+                <i>📝</i>
+                <h3>Export PDF</h3>
+                <p>Export your notes as PDF files for easy sharing or printing.</p>
+            </div>
+        </div>
+    </section>
+
+    <section class="section limits-section">
+        <h2>Usage Limits</h2>
+        <p>Understand the limits of Smart Notes to make the most of your experience.</p>
+        <div class="limits-grid">
+            <div class="limit-card">
+                <h3>PDF Uploads</h3>
+                <p>Users can upload up to 5 PDFs per 24 hours, each with a maximum size of 5MB.</p>
+            </div>
+            <div class="limit-card">
+                <h3>Chat Queries</h3>
+                <p>Engage in up to 20 chat queries per 24 hours to interact with your notes.</p>
+            </div>
+            <div class="limit-card">
+                <h3>File Types</h3>
+                <p>Supports PDF documents files for transcription and summarization.</p>
+            </div>
+        </div>
+    </section>
+
+    <section class="section about-section">
+        <h2>About the Creator</h2>
+        <p>Meet the mind behind Smart Notes, dedicated to revolutionizing academic productivity.</p>
+        <div class="about-content">
+            <div class="about-text">
+                <h3>Krish Chaudhary</h3>
+                <p>Hi, I'm Krish Chaudhary, a passionate AI enthusiast and lifelong learner. I created Smart Notes to empower students and professionals to streamline their study process using cutting-edge AI technology. With a strong focus on backend development, machine learning, and data science, I specialize in building intelligent systems using tools like LangChain and MLflow. My goal is to make learning accessible, efficient, and engaging through innovative AI-driven solutions.</p>
+                <div class="social-links">
+                    <a href="https://www.linkedin.com/in/krish-chaudhary-krc8252" target="_blank">
+                        <img src="https://upload.wikimedia.org/wikipedia/commons/c/ca/LinkedIn_logo_initials.png" alt="LinkedIn Logo">
+                    </a>
+                    <a href="https://github.com/krish1440" target="_blank">
+                        <img src="https://upload.wikimedia.org/wikipedia/commons/9/91/Octicons-mark-github.svg" alt="GitHub Logo">
+                    </a>
+                    <a href="mailto:krish.chaudhary@example.com" target="_blank" aria-label="Email Krish Chaudhary">
+                        <img src="https://www.svgrepo.com/download/156923/email-envelope-outline.svg" alt="Email Icon">
+                    </a>
+                    <a href="https://portfolio-krish-chaudhary.vercel.app/" target="_blank">
+                        <img src="https://www.svgrepo.com/download/39138/portfolio.svg" alt="Portfolio Icon" width="40" height="40">
+                    </a>
+                </div>
+            </div>
+            <div class="about-image">
+                <img src="https://res.cloudinary.com/dyhe9rbjz/image/upload/v1752730193/xnpzgmszpklhab69bsaj.png" alt="Creator Image">
+            </div>
+        </div>
+    </section>
+
+    <section class="contact-section">
+        <h2>Get in Touch</h2>
+        <p>Have questions, feedback, or ideas? We'd love to hear from you! Whether you want to contribute, report issues, or just say hello, reach out and let's connect.</p>
+        <div class="contact-content">
+            <form class="contact-form" id="contactForm" method="POST" action="https://formsubmit.co/krishchaudhary144@gmail.com">
+                <input type="text" name="_honey" style="display:none">
+                <input type="hidden" name="_captcha" value="false">
+                <input type="hidden" name="_subject" value="New Contact Form Submission from Smart Notes">
+                <input type="hidden" name="_next" value="">
+                <input type="hidden" name="_autoresponse" value="**Thank You for Contacting Smart Notes!**
+
+We have received your message and will get back to you soon. Here's a copy of your submission:
+
+**Name**: {name}
+**Email**: {email}
+**Phone**: {phone}
+**Message**: {message}
+
+Best regards,
+The Smart Notes Team">
+                <div class="form-group">
+                    <label for="name">Full Name *</label>
+                    <input type="text" id="name" name="name" placeholder="Enter your full name" required>
+                </div>
+                <div class="form-group">
+                    <label for="email">Email Address *</label>
+                    <input type="email" id="email" name="email" placeholder="Enter your email address" required>
+                </div>
+                <div class="form-group">
+                    <label for="phone">Mobile Number</label>
+                    <input type="tel" id="phone" name="phone" placeholder="Enter your mobile number (optional)" pattern="[0-9]{10}">
+                </div>
+                <div class="form-group">
+                    <label for="message">Message *</label>
+                    <textarea id="message" name="message" placeholder="Tell us about your thoughts, suggestions, or questions..." required></textarea>
+                </div>
+                <button type="submit" class="submit-button">Send Message</button>
+            </form>
+            <div id="thankYouMessage" class="thank-you-message">
+                <h3>Thank You!</h3>
+                <p>Your message has been successfully submitted. We'll get back to you soon!</p>
+                <button onclick="returnToForm()" class="submit-button">Back to Form</button>
+            </div>
+            <div id="formMessage" class="form-message"></div>
+        </div>
+    </section>
+
+    <footer>
+        <p>&copy; 2025 Smart Notes. All rights reserved.</p>
+    </footer>
+
+    <!-- Schema.org Structured Data -->
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "WebSite",
+        "name": "Smart Notes",
+        "url": "https://smartnotes.example.com",
+        "description": "AI-powered academic assistant for PDF summarization and interactive Q&A.",
+        "publisher": {
+            "@type": "Person",
+            "name": "Krish Chaudhary",
+            "sameAs": [
+                "https://www.linkedin.com/in/krish-chaudhary-krc8252",
+                "https://github.com/krish1440",
+                "https://portfolio-krish-chaudhary.vercel.app/"
+            ]
+        },
+        "potentialAction": {
+            "@type": "SearchAction",
+            "target": "https://smartnotes.example.com/search?q={search_term_string}",
+            "query-input": "required name=search_term_string"
+        }
+    }
+    </script>
+
+    <!-- JavaScript for Loading Spinner and Form Handling -->
+    <script>
+        // Hero Loading Spinner
+        document.addEventListener('DOMContentLoaded', function () {
+            const hero = document.getElementById('hero');
+            const heroLoading = document.getElementById('hero-loading');
+            const bgImage = new Image();
+            bgImage.src = 'https://res.cloudinary.com/dyhe9rbjz/image/upload/v1758373897/otreuwn5bi37tlaaqndt.png';
+            
+            bgImage.onload = function () {
+                hero.classList.add('loaded');
+                heroLoading.classList.add('hidden');
+            };
+
+            bgImage.onerror = function () {
+                hero.classList.add('loaded');
+                heroLoading.classList.add('hidden');
+            };
+
+            // Contact Form Handling
+            const contactForm = document.getElementById('contactForm');
+            const formMessage = document.getElementById('formMessage');
+            const thankYouMessage = document.getElementById('thankYouMessage');
+            const submitButton = contactForm.querySelector('.submit-button');
+
+            contactForm.addEventListener('submit', async function(e) {
+                e.preventDefault();
+                
+                if (!contactForm.checkValidity()) {
+                    contactForm.reportValidity();
+                    return;
+                }
+
+                const formData = new FormData(contactForm);
+                submitButton.disabled = true;
+                submitButton.textContent = 'Sending...';
+                formMessage.style.display = 'none';
+                thankYouMessage.style.display = 'none';
+                
+                try {
+                    const response = await fetch(contactForm.action, {
+                        method: 'POST',
+                        body: formData,
+                        headers: {
+                            'Accept': 'application/json'
+                        }
+                    });
+                    
+                    if (response.ok) {
+                        contactForm.style.display = 'none';
+                        thankYouMessage.style.display = 'block';
+                        contactForm.reset();
+                    } else {
+                        throw new Error('Form submission failed');
+                    }
+                } catch (error) {
+                    formMessage.className = 'form-message error';
+                    formMessage.textContent = 'Oops! Something went wrong. Please try again or email us directly at krishchaudhary144@gmail.com.';
+                    formMessage.style.display = 'block';
+                } finally {
+                    submitButton.disabled = false;
+                    submitButton.textContent = 'Send Message';
+                }
+            });
+
+            // Return to Form Function
+            window.returnToForm = function() {
+                contactForm.style.display = 'block';
+                thankYouMessage.style.display = 'none';
+                formMessage.style.display = 'none';
+            };
+        });
+    </script>
+</body>
+</html>
