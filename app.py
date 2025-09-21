@@ -217,7 +217,7 @@ def timeout(seconds):
     return decorator
 
 # Rate limiting helper with timeout
-@timeout(60)
+@timeout(120)
 def rate_limit_llm(func, *args, max_retries=3, delay=2):
     for attempt in range(max_retries):
         try:
@@ -299,7 +299,7 @@ def require_auth(f):
         return f(*args, **kwargs)
     return decorated
 
-@timeout(60)
+@timeout(120)
 def extract_text_from_pdf(file_content):
     import PyPDF2
     import io
@@ -328,7 +328,7 @@ def chunk_text(text, chunk_size=1000, chunk_overlap=200):
         logger.error(f"Error chunking text: {str(e)}")
         return []
 
-@timeout(60)
+@timeout(120)
 def create_pinecone_vectors(chunks, note_id, user_id, batch_size=5):
     pinecone_index = lazy_init.get_pinecone_index()
     hf_embeddings = lazy_init.get_hf_embeddings()
@@ -381,7 +381,7 @@ def create_pinecone_vectors(chunks, note_id, user_id, batch_size=5):
         logger.error(f"Error creating Pinecone vectors: {str(e)}")
         return False, None
 
-@timeout(60)
+@timeout(120)
 def get_relevant_chunks(note_id, user_id, query, top_k=5):
     pinecone_index = lazy_init.get_pinecone_index()
     hf_embeddings = lazy_init.get_hf_embeddings()
@@ -422,7 +422,7 @@ def markdown_to_html(text):
         logger.error(f"Error converting Markdown to HTML: {str(e)}")
         return text
 
-@timeout(120)
+@timeout(150)
 def summarize_text(text):
     import google.generativeai as genai
     def generate_summary():
@@ -446,7 +446,7 @@ def summarize_text(text):
     
     return rate_limit_llm(generate_summary) or "Error generating summary"
 
-@timeout(60)
+@timeout(120)
 def upload_to_cloudinary(file_content, resource_type, folder):
     cloudinary = lazy_init.get_cloudinary()
     try:
@@ -1349,3 +1349,4 @@ def export_note_to_pdf(note_id):
 if __name__ == '__main__':
     init_db()
     app.run(debug=False)
+
