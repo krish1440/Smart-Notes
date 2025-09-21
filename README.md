@@ -1,5 +1,6 @@
 # 🌟 Smart Notes Application
- 
+ [![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)](https://www.python.org) [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT) [![Status](https://img.shields.io/badge/Status-Active-brightgreen.svg)](https://github.com)
+
 *Effortlessly manage, summarize, and interact with your PDF notes using AI-powered features.*
 
 Welcome to the **Smart Notes Application**, a sleek and powerful web platform that transforms how you handle your PDF notes. Whether you're a student cramming for exams, a professional organizing research, or a curious learner exploring new topics, this app makes it easy to upload, summarize, and chat about your documents. With a user-friendly interface and smart AI features, you can store your notes securely, ask questions about them, and export everything as polished PDFs. Dive in to explore its features, setup guide, and more!
