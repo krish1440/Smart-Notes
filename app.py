@@ -16,7 +16,14 @@ import warnings
 import httpx
 from retry import retry
 import postgrest.exceptions
-import fitz  # PyMuPDF for PDF processing
+import fitz  #  for PDF processing
+from reportlab.lib.pagesizes import letter
+from reportlab.lib import colors
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, ListFlowable, ListItem, Preformatted
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.enums import TA_LEFT, TA_JUSTIFY
+from bs4 import BeautifulSoup
+from io import BytesIO
 
 # Configure logging
 logging.basicConfig(
@@ -191,7 +198,7 @@ class LazyInitializer:
             self._nltk_initialized = True
             logger.info("NLTK data initialized")
 
-# Initialize lazy loader
+#  loader
 lazy_init = LazyInitializer()
 
 # Timeout decorator for Windows
@@ -1186,14 +1193,6 @@ def change_password():
         logger.error(f"Unexpected error in change-password endpoint: {str(e)}")
         return jsonify({'error': f'Unexpected error: {str(e)}'}), 500
 
-from reportlab.lib.pagesizes import letter
-from reportlab.lib import colors
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, ListFlowable, ListItem, Preformatted
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.enums import TA_LEFT, TA_JUSTIFY
-from bs4 import BeautifulSoup
-from io import BytesIO
-
 @app.route('/api/notes/<note_id>/export', methods=['GET'])
 @require_auth
 def export_note_to_pdf(note_id):
@@ -1420,3 +1419,4 @@ def export_note_to_pdf(note_id):
 if __name__ == '__main__':
     init_db()
     app.run(debug=True)
+
