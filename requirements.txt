@@ -17,4 +17,5 @@ markdown
 retry
 reportlab
 beautifulsoup4
+gunicorn
 
