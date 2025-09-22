@@ -25,7 +25,7 @@ from reportlab.lib.enums import TA_LEFT, TA_JUSTIFY
 from bs4 import BeautifulSoup
 from io import BytesIO
 
-# Configure logging
+# Configure logiing
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s %(levelname)s: %(message)s',
@@ -33,17 +33,16 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Suppress specific warnings
+# Suppress warnings
 warnings.filterwarnings("ignore", category=DeprecationWarning, module="langchain_pinecone")
 warnings.filterwarnings("ignore", message=".*pydantic.*")
 
-# Initialize Flask app
 app = Flask(__name__)
 app.secret_key = 'your-secret-key-change-this'
 CORS(app)
 load_dotenv()
 
-# Environment Variables
+
 try:
     SUPABASE_URL = os.getenv("SUPABASE_URL")
     SUPABASE_KEY = os.getenv("SUPABASE_KEY")
@@ -201,7 +200,7 @@ class LazyInitializer:
 #  loader
 lazy_init = LazyInitializer()
 
-# Timeout decorator for Windows
+# Timeout decorator
 def timeout(seconds):
     def decorator(func):
         def _timeout_handler(signum, frame):
@@ -219,7 +218,7 @@ def timeout(seconds):
         return wrapper
     return decorator
 
-# Rate limiting helper with timeout
+# Rate limiting helper  ( timeout )
 @timeout(60)
 def rate_limit_llm(func, *args, max_retries=3, delay=2):
     import google.generativeai as genai
@@ -244,7 +243,6 @@ def rate_limit_llm(func, *args, max_retries=3, delay=2):
                 return None
     return None
 
-# Database initialization
 def init_db():
     try:
         supabase = lazy_init.get_supabase()
@@ -1419,4 +1417,5 @@ def export_note_to_pdf(note_id):
 if __name__ == '__main__':
     init_db()
     app.run(debug=True)
+
 
