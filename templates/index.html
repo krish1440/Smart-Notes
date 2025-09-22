@@ -217,7 +217,7 @@
             .otp-input-group {
                 gap: 5px;
                 margin: 15px 0;
-                flex-wrap: wrap; /* Dynamic wrap if needed on very small screens */
+                flex-wrap: wrap;
             }
 
             .otp-input {
@@ -493,15 +493,18 @@
         // Handle OTP input
         const otpInputs = document.querySelectorAll('.otp-input');
         otpInputs.forEach((input, index) => {
-            input.addEventListener('keyup', (e) => {
-                if (e.key >= '0' && e.key <= '9') {
+            input.addEventListener('input', (e) => {
+                const value = e.target.value;
+                if (/^[0-9]$/.test(value)) { // Check if input is a single digit
                     if (index < otpInputs.length - 1) {
                         otpInputs[index + 1].focus();
                     }
-                } else if (e.key === 'Backspace') {
+                } else if (value === '' && e.inputType === 'deleteContentBackward') {
                     if (index > 0) {
                         otpInputs[index - 1].focus();
                     }
+                } else {
+                    e.target.value = ''; // Clear invalid input
                 }
             });
         });
