@@ -997,6 +997,7 @@ Previous Conversation History: {history_str}
 [USER QUERY]
 {message}
 [FINAL INSTRUCTIONS]
+Handle greting message like (hey , nice ,great,and all other )your response should be like that also 
 If the user query is not related to the uploaded document, politely respond with a clear message such as:
 'Sorry, this query is not valid for the uploaded document. Please ask something relevant to the document content.
 Generate a **detailed, structured, and well-formatted response** to the user’s query.
@@ -1419,6 +1420,7 @@ def export_note_to_pdf(note_id):
 if __name__ == '__main__':
     init_db()
     app.run(debug=True)
+
 
 
 
