@@ -17,4 +17,6 @@ reportlab
 beautifulsoup4
 markdown
 gunicorn
+numpy
+
 
