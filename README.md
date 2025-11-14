@@ -6,23 +6,6 @@
 Welcome to the **Smart Notes Application**, a sleek and powerful web platform that transforms how you handle your PDF notes. Whether you're a student cramming for exams, a professional organizing research, or a curious learner exploring new topics, this app makes it easy to upload, summarize, and chat about your documents. With a user-friendly interface and smart AI features, you can store your notes securely, ask questions about them, and export everything as polished PDFs. Dive in to explore its features, setup guide, and more!
 
 ---
-
-## 📑 Table of Contents
-
-- [What Is Smart Notes?](#what-is-smart-notes)
-- [Key Features](#key-features)
-- [Get Started](#get-started)
-- [App Structure](#app-structure)
-- [Troubleshooting](#troubleshooting)
-- [Future Plans](#future-plans)
-- [Contributing](#contributing)
-- [License](#license)
-- [Contact Us](#contact-us)
-
-*Click the links above to jump to a section or scroll to explore!*
-
----
-
 ## 🌍 What Is Smart Notes?
 
 The Smart Notes Application is your go-to tool for managing PDF documents with ease. Upload your notes, get instant summaries, and chat with an AI to dive deeper into the content. The app organizes your notes in a clean dashboard, keeps your data secure, and lets you export your work as professional PDFs. It’s like having a personal study assistant that’s available 24/7!
