@@ -176,7 +176,7 @@ class LazyInitializer:
 
     def get_llm(self):
         if self._llm is None:
-            import google.generativeai as genai
+            import google.genai
             from langchain_google_genai import GoogleGenerativeAI
             try:
                 genai.configure(api_key=GOOGLE_API_KEY)
@@ -1420,6 +1420,7 @@ def export_note_to_pdf(note_id):
 if __name__ == '__main__':
     init_db()
     app.run(debug=True)
+
 
 
 
