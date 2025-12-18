@@ -180,7 +180,7 @@ class LazyInitializer:
             from langchain_google_genai import GoogleGenerativeAI
             try:
                 genai.configure(api_key=GOOGLE_API_KEY)
-                self._llm = GoogleGenerativeAI(model='gemini-1.5-flash', google_api_key=GOOGLE_API_KEY)
+                self._llm = GoogleGenerativeAI(model='gemini-2.5-flash', google_api_key=GOOGLE_API_KEY)
                 logger.info("Google Generative AI initialized")
             except Exception as e:
                 logger.error(f"Error initializing Google Generative AI: {str(e)}")
@@ -1420,6 +1420,7 @@ def export_note_to_pdf(note_id):
 if __name__ == '__main__':
     init_db()
     app.run(debug=True)
+
 
 
 
