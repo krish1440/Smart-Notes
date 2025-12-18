@@ -221,7 +221,7 @@ def timeout(seconds):
 # Rate limiting helper  ( timeout )
 @timeout(60)
 def rate_limit_llm(func, *args, max_retries=3, delay=2):
-    import google.generativeai as genai
+    import google.genai as genai
     for attempt in range(max_retries):
         try:
             return func(*args)
@@ -427,7 +427,7 @@ def markdown_to_html(text):
 
 @timeout(120)
 def summarize_text(text):
-    import google.generativeai as genai
+    import google.genai as genai
     def generate_summary():
         model = genai.GenerativeModel('gemini-1.5-flash')
         prompt = f"""
@@ -949,7 +949,7 @@ def chat():
         final_context = relevant_context if relevant_context else context
         
         def generate_response():
-            import google.generativeai as genai
+            import google.genai as genai
             model = genai.GenerativeModel('gemini-1.5-flash')
             prompt = f"""
 [SYSTEM INSTRUCTIONS]
@@ -1420,6 +1420,7 @@ def export_note_to_pdf(note_id):
 if __name__ == '__main__':
     init_db()
     app.run(debug=True)
+
 
 
 
