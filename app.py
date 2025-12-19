@@ -310,8 +310,8 @@ def extract_text_from_pdf(file_content):
         return None
 
 def chunk_text(text, chunk_size=1000, chunk_overlap=200):
-    from langchain.text_splitter import RecursiveCharacterTextSplitter
     try:
+        from langchain_text_splitters import RecursiveCharacterTextSplitter
         text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=chunk_size,
             chunk_overlap=chunk_overlap,
@@ -323,6 +323,9 @@ def chunk_text(text, chunk_size=1000, chunk_overlap=200):
                 yield from text_splitter.split_text(chunk)
         
         return list(stream_chunks())
+    except ImportError as e:
+        logger.error(f"LangChain not installed: {str(e)}")
+        return []  # Fallback: simple chunking
     except ValueError as e:
         logger.error(f"Error chunking text: {str(e)}")
         return []
@@ -1419,6 +1422,7 @@ def export_note_to_pdf(note_id):
 if __name__ == '__main__':
     init_db()
     app.run(debug=True)
+
 
 
 
