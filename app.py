@@ -177,10 +177,9 @@ class LazyInitializer:
     def get_llm(self):
         if self._llm is None:
             import google.generativeai as genai
-            from langchain_google_genai import GoogleGenerativeAI
             try:
                 genai.configure(api_key=GOOGLE_API_KEY)
-                self._llm = GoogleGenerativeAI(model='gemini-2.5-flash', google_api_key=GOOGLE_API_KEY)
+                self._llm = genai.GenerativeModel('gemini-2.5-flash')  # or 'gemini-1.5-pro'
                 logger.info("Google Generative AI initialized")
             except Exception as e:
                 logger.error(f"Error initializing Google Generative AI: {str(e)}")
@@ -429,7 +428,7 @@ def markdown_to_html(text):
 def summarize_text(text):
     import google.generativeai as genai 
     def generate_summary():
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        model = genai.GenerativeModel('gemini-2.5-flash')
         prompt = f"""
         Create a detailed summary of the following text.
         Include key points, main topics, and important details:
@@ -950,7 +949,7 @@ def chat():
         
         def generate_response():
             import google.generativeai as genai 
-            model = genai.GenerativeModel('gemini-1.5-flash')
+            model = genai.GenerativeModel('gemini-2.5-flash')
             prompt = f"""
 [SYSTEM INSTRUCTIONS]
 You are an advanced AI tutor and knowledge navigator with expertise in analyzing and explaining complex topics.
@@ -1420,6 +1419,7 @@ def export_note_to_pdf(note_id):
 if __name__ == '__main__':
     init_db()
     app.run(debug=True)
+
 
 
 
