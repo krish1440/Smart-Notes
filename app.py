@@ -176,7 +176,7 @@ class LazyInitializer:
 
     def get_llm(self):
         if self._llm is None:
-            import google.genai
+            import google.generativeai as genai
             from langchain_google_genai import GoogleGenerativeAI
             try:
                 genai.configure(api_key=GOOGLE_API_KEY)
@@ -221,14 +221,14 @@ def timeout(seconds):
 # Rate limiting helper  ( timeout )
 @timeout(60)
 def rate_limit_llm(func, *args, max_retries=3, delay=2):
-    import google.genai as genai
+    import google.generativeai as genai as genai
     for attempt in range(max_retries):
         try:
             return func(*args)
-        except genai.types.generation_types.BlockedPromptException as e:
+        except genai.types.BlockedPromptException as e:
             logger.error(f"LLM blocked prompt error: {str(e)}")
             return None
-        except genai.types.generation_types.ResponseError as e:
+        except genai.types.ResponseError as e:
             if "429" in str(e) or "quota" in str(e).lower():
                 if attempt < max_retries - 1:
                     wait_time = delay * (2 ** attempt)
@@ -427,7 +427,7 @@ def markdown_to_html(text):
 
 @timeout(120)
 def summarize_text(text):
-    import google.genai as genai
+    import google.generativeai as genai as genai
     def generate_summary():
         model = genai.GenerativeModel('gemini-1.5-flash')
         prompt = f"""
@@ -440,10 +440,10 @@ def summarize_text(text):
             response = model.generate_content(prompt)
             summary = response.text
             return markdown_to_html(summary)
-        except genai.types.generation_types.BlockedPromptException as e:
+        except genai.types.BlockedPromptException as e:
             logger.error(f"Gemini blocked prompt error: {str(e)}")
             return markdown_to_html("Summary unavailable due to content restrictions.")
-        except genai.types.generation_types.ResponseError as e:
+        except genai.types.ResponseError as e:
             logger.error(f"Gemini summary generation failed: {str(e)}")
             return markdown_to_html("Error generating summary: Limit reached or content error.")
     
@@ -949,7 +949,7 @@ def chat():
         final_context = relevant_context if relevant_context else context
         
         def generate_response():
-            import google.genai as genai
+            import google.generativeai as genai as genai
             model = genai.GenerativeModel('gemini-1.5-flash')
             prompt = f"""
 [SYSTEM INSTRUCTIONS]
@@ -1007,10 +1007,10 @@ Ensure the response is **professional, clear, and suitable for inclusion in a PD
             try:
                 response = model.generate_content(prompt)
                 return markdown_to_html(response.text)
-            except genai.types.generation_types.BlockedPromptException as e:
+            except genai.types.BlockedPromptException as e:
                 logger.error(f"Gemini blocked prompt error: {str(e)}")
                 return markdown_to_html("Sorry, the query was blocked due to content restrictions.")
-            except genai.types.generation_types.ResponseError as e:
+            except genai.types.ResponseError as e:
                 logger.error(f"Gemini response generation failed: {str(e)}")
                 return markdown_to_html("Error generating response: Limit reached or content error.")
         
@@ -1420,6 +1420,7 @@ def export_note_to_pdf(note_id):
 if __name__ == '__main__':
     init_db()
     app.run(debug=True)
+
 
 
 
