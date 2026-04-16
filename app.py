@@ -39,9 +39,9 @@ warnings.filterwarnings("ignore", message=".*pydantic.*")
 
 # Initialize Flask app
 app = Flask(__name__)
-app.secret_key = 'your-secret-key-change-this'
-CORS(app)
 load_dotenv()
+app.secret_key = os.getenv("FLASK_SECRET_KEY", "fallback-secret-key-change-this")
+CORS(app)
 
 # Environment Variables
 try:

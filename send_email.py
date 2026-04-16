@@ -1,11 +1,17 @@
 import os
-from supabase import create_client, Client
 import time
+from dotenv import load_dotenv
+from supabase import create_client, Client
 
-# Set your Supabase project URL and service role key
-# You can set these as environment variables for security
-SUPABASE_URL = os.getenv("SUPABASE_URL", "https://rivlshyauoqxwqvsbbec.supabase.co")
-SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJpdmxzaHlhdW9xeHdxdnNiYmVjIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NzI2NzU4NiwiZXhwIjoyMDcyODQzNTg2fQ.xXdTsdlbJwdrMdtWwP9XQuyI9sGDjx8shNPAF3WfE6k")
+load_dotenv()
+
+# Configuration from environment variables
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+
+if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
+    raise ValueError("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in .env file")
+
 # Initialize Supabase client
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
