@@ -116,13 +116,13 @@
     <div class="relative group cursor-pointer" id="user-menu-wrapper">
       <div class="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-white/5 transition-colors" id="user-menu-trigger">
         <span class="material-symbols-outlined text-[#b9c3ff]" style="font-variation-settings:'FILL' 1;">account_circle</span>
-        <span class="text-sm font-medium text-slate-400 hidden md:block" id="user-email-display">User</span>
+        <span class="text-sm font-medium text-slate-400 hidden md:block max-w-[150px] truncate" id="user-email-display">User</span>
         <span class="material-symbols-outlined text-slate-500 text-sm">expand_more</span>
       </div>
       <!-- Dropdown -->
-      <div class="absolute right-0 top-full mt-2 w-52 glass-panel rounded-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-300 p-2 shadow-2xl border border-white/10" id="user-dropdown">
-        <div class="px-3 py-2 text-xs text-on-surface-variant uppercase tracking-widest font-bold border-b border-white/5 mb-1" id="dropdown-email">Account</div>
-        <button onclick="openChangePasswordModal()" class="w-full text-left px-3 py-2 text-sm hover:bg-white/5 rounded-lg cursor-pointer transition-colors text-on-surface">
+      <div class="absolute right-0 top-full mt-2 min-w-[240px] max-w-[320px] glass-panel rounded-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-300 p-2 shadow-2xl border border-white/10" id="user-dropdown">
+        <div class="px-3 py-2 text-[10px] text-on-surface-variant uppercase tracking-widest font-bold border-b border-white/5 mb-1 truncate" id="dropdown-email">Account</div>
+        <button onclick="openChangePasswordModal()" class="w-full text-left px-3 py-2 text-sm hover:bg-white/5 rounded-lg cursor-pointer transition-colors text-on-surface flex items-center">
           <span class="material-symbols-outlined text-sm mr-2">lock</span>Change Password
         </button>
       </div>
