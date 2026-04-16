@@ -1,1707 +1,898 @@
 <!DOCTYPE html>
-<html lang="en">
+<html class="dark" lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard - Smart Notes</title>
-    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: 'Arial', sans-serif;
-            background: #f5f7fa;
-            overflow-x: hidden;
-        }
-
-        body.loading {
-            pointer-events: none;
-            opacity: 0.7;
-        }
-
-        .header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 0.75rem 1.5rem;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            z-index: 1000;
-            height: 60px;
-        }
-
-        .header h1 {
-            font-size: 22px;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            flex-shrink: 1;
-        }
-
-        .user-info {
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-            position: relative;
-        }
-
-        .user-icon {
-            width: 32px;
-            height: 32px;
-            cursor: pointer;
-            transition: transform 0.3s ease, opacity 0.3s ease;
-        }
-
-        .user-icon:hover {
-            transform: scale(1.1);
-            opacity: 0.9;
-        }
-
-        .user-email-tooltip {
-            position: absolute;
-            top: 100%;
-            right: 0;
-            background: #fff;
-            color: #333;
-            padding: 0.5rem 1rem;
-            border-radius: 8px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
-            font-size: 14px;
-            opacity: 0;
-            visibility: hidden;
-            transform: translateY(-10px);
-            transition: opacity 0.3s ease, transform 0.3s ease, visibility 0.3s ease;
-            white-space: nowrap;
-            z-index: 1001;
-            border: 1px solid #e1e5e9;
-        }
-
-        .user-info:hover .user-email-tooltip,
-        .user-info.active .user-email-tooltip {
-            opacity: 1;
-            visibility: visible;
-            transform: translateY(5px);
-        }
-
-        .user-email-tooltip .tooltip-item {
-            padding: 0.5rem 0;
-            cursor: pointer;
-            transition: background 0.2s;
-        }
-
-        .user-email-tooltip .tooltip-item:hover {
-            background: #f0f2ff;
-        }
-
-        .logout-btn {
-            background: rgba(255,255,255,0.2);
-            border: none;
-            color: white;
-            padding: 0.4rem 0.8rem;
-            border-radius: 20px;
-            cursor: pointer;
-            transition: background 0.3s;
-            font-size: 14px;
-        }
-
-        .logout-btn:hover {
-            background: rgba(255,255,255,0.3);
-        }
-
-        .menu-btn {
-            display: none;
-            background: none;
-            border: none;
-            color: white;
-            font-size: 22px;
-            cursor: pointer;
-            padding: 0.4rem;
-        }
-
-        .main-container {
-            margin-top: 60px;
-            display: flex;
-            flex-direction: row;
-            min-height: calc(100vh - 60px);
-            height: auto;
-        }
-
-        .sidebar {
-            background: white;
-            border-right: 1px solid #e1e5e9;
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-            flex: 0 0 300px;
-            width: 300px;
-            position: fixed;
-            top: 60px;
-            left: 0;
-            height: calc(100vh - 60px);
-            z-index: 999;
-            transition: transform 0.3s ease-in-out;
-        }
-
-        .upload-section {
-            padding: 1.5rem;
-            border-bottom: 1px solid #e1e5e9;
-            flex-shrink: 0;
-        }
-
-        .upload-area {
-            border: 2px dashed #667eea;
-            border-radius: 10px;
-            padding: 1.5rem 1rem;
-            text-align: center;
-            background: #f8f9ff;
-            cursor: pointer;
-            transition: all 0.3s;
-        }
-
-        .upload-area:hover {
-            background: #f0f2ff;
-            border-color: #5a6fd8;
-        }
-
-        .upload-area.dragover {
-            background: #e8ebff;
-            border-color: #4c63d2;
-        }
-
-        .file-input {
-            display: none;
-        }
-
-        .upload-icon {
-            font-size: 36px;
-            color: #667eea;
-            margin-bottom: 0.5rem;
-        }
-
-        .notes-list {
-            flex: 1;
-            padding: 1rem;
-            overflow-y: auto;
-        }
-
-        .notes-list h3 {
-            margin-bottom: 1rem;
-            color: #333;
-            font-size: 16px;
-        }
-
-        .note-item {
-            background: #f8f9fa;
-            padding: 0.75rem;
-            border-radius: 8px;
-            margin-bottom: 0.5rem;
-            cursor: pointer;
-            transition: all 0.3s;
-            position: relative;
-        }
-
-        .note-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            gap: 0.5rem;
-            margin-bottom: 4px;
-        }
-
-        .context-menu-trigger {
-            padding: 4px 8px;
-            border-radius: 4px;
-            cursor: pointer;
-            opacity: 0.6;
-            transition: all 0.3s;
-            background: none;
-            border: none;
-            font-size: 18px;
-            line-height: 1;
-            color: #666;
-        }
-
-        .note-item.active .context-menu-trigger {
-            color: white;
-            opacity: 0.8;
-        }
-
-        .context-menu-trigger:hover {
-            opacity: 1;
-            background: rgba(0, 0, 0, 0.05);
-        }
-
-        .note-item.active .context-menu-trigger:hover {
-            background: rgba(255, 255, 255, 0.2);
-        }
-
-        .context-menu {
-            position: absolute;
-            right: 0.5rem;
-            top: 2.5rem;
-            background: white;
-            border-radius: 8px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
-            z-index: 100;
-            display: none;
-            min-width: 160px;
-            border: 1px solid #e1e5e9;
-            opacity: 0;
-            transform: translateY(-10px);
-            transition: opacity 0.2s, transform 0.2s;
-        }
-
-        .context-menu.show {
-            display: block;
-            opacity: 1;
-            transform: translateY(0);
-        }
-
-        .context-menu-item {
-            padding: 0.75rem 1rem;
-            cursor: pointer;
-            transition: all 0.2s;
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-            color: #333;
-            font-size: 14px;
-        }
-
-        .context-menu-item:first-child {
-            border-radius: 8px 8px 0 0;
-        }
-
-        .context-menu-item:last-child {
-            border-radius: 0 0 8px 8px;
-        }
-
-        .context-menu-item:hover {
-            background: #f0f2ff;
-        }
-
-        .context-menu-item.delete {
-            color: #dc3545;
-            border-top: 1px solid #eee;
-        }
-
-        .context-menu-item.delete:hover {
-            background: #fff5f5;
-        }
-
-        .context-menu-item span {
-            white-space: nowrap;
-        }
-
-        .note-item:hover {
-            background: #e9ecef;
-        }
-
-        .note-item.active {
-            background: #667eea;
-            color: white;
-        }
-
-        .note-title {
-            font-weight: bold;
-            font-size: 13px;
-            margin-bottom: 0.25rem;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-
-        .note-date {
-            font-size: 11px;
-            color: #666;
-        }
-
-        .note-item.active .note-date {
-            color: rgba(255,255,255,0.8);
-        }
-
-        .content-area {
-            padding: 2rem 2rem 2rem 1rem;
-            display: flex;
-            flex-direction: column;
-            gap: 2rem;
-            flex: 1;
-            min-width: 0;
-            margin-left: 300px;
-            overflow-y: auto;
-        }
-
-        .summary-section {
-            background: white;
-            border-radius: 12px;
-            padding: 2rem;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
-            width: 100%;
-            overflow-x: auto;
-        }
-
-        .chat-section {
-            background: white;
-            border-radius: 12px;
-            padding: 2rem;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
-            display: flex;
-            flex-direction: column;
-            width: 100%;
-            margin-bottom: 1.5rem;
-            overflow: visible;
-        }
-
-        .section-title {
-            font-size: 18px;
-            font-weight: bold;
-            color: #333;
-            margin-bottom: 1rem;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            flex-shrink: 0;
-        }
-
-        .summary-content {
-            line-height: 1.6;
-            color: #555;
-            font-size: 14px;
-            overflow-wrap: break-word;
-        }
-
-        .summary-content pre,
-        .summary-content code {
-            white-space: pre-wrap;
-            word-wrap: break-word;
-            overflow-wrap: break-word;
-        }
-
-        .chat-messages {
-            overflow-y: auto;
-            margin-bottom: 1rem;
-            border: 1px solid #e1e5e9;
-            border-radius: 12px;
-            padding: 1rem;
-            background: #fafbfc;
-            flex-grow: 1;
-            max-height: 400px;
-            overscroll-behavior: contain;
-            -webkit-overflow-scrolling: touch;
-            touch-action: pan-y;
-        }
-
-        .message {
-            margin-bottom: 1rem;
-            padding: 0.75rem 1rem;
-            border-radius: 12px;
-            word-wrap: break-word;
-            max-width: 85%;
-        }
-
-        .message.user {
-            background: #667eea;
-            color: white;
-            margin-left: auto;
-            margin-right: 0;
-            border-bottom-right-radius: 4px;
-        }
-
-        .message.ai {
-            background: white;
-            border: 1px solid #e1e5e9;
-            margin-right: auto;
-            margin-left: 0;
-            border-bottom-left-radius: 4px;
-        }
-
-        .message-sender {
-            font-weight: bold;
-            font-size: 12px;
-            margin-bottom: 0.5rem;
-            opacity: 0.8;
-        }
-
-        .message-content {
-            font-size: 14px;
-            line-height: 1.5;
-            overflow-wrap: break-word;
-        }
-
-        .message-content pre,
-        .message-content code {
-            white-space: pre-wrap;
-            word-wrap: break-word;
-            overflow-wrap: break-word;
-        }
-
-        .chat-input-container {
-            flex-shrink: 0;
-            display: flex;
-            flex-direction: row;
-            align-items: flex-end;
-            gap: 0.75rem;
-            padding: 1rem 0 0 0;
-            background: transparent;
-            border-radius: 12px;
-            border: none;
-            position: relative;
-        }
-
-        .chat-input-container textarea {
-            flex: 1;
-            padding: 0.75rem 1rem;
-            border: 1px solid #e1e5e9;
-            border-radius: 25px;
-            font-size: 14px;
-            font-family: 'Arial', sans-serif;
-            outline: none;
-            transition: border-color 0.3s;
-            background: white;
-            resize: none;
-            min-height: 40px;
-            max-height: 200px;
-            overflow: hidden;
-            line-height: 1.5;
-            padding-right: 3.5rem;
-        }
-
-        .chat-input-container textarea:focus {
-            border-color: #667eea;
-            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-        }
-
-        .chat-input-container button {
-            position: absolute;
-            right: 0.5rem;
-            bottom: 0.5rem;
-            background: #667eea;
-            color: white;
-            border: none;
-            padding: 0.5rem;
-            border-radius: 50%;
-            cursor: pointer;
-            font-size: 14px;
-            font-weight: 500;
-            transition: background 0.3s;
-            width: 32px;
-            height: 32px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .chat-input-container button::before {
-            content: '➤';
-            font-size: 16px;
-            transform: rotate(-45deg);
-        }
-
-        .chat-input-container button:hover:not(:disabled) {
-            background: #5a6fd8;
-        }
-
-        .chat-input-container button:disabled {
-            background: #ccc;
-            cursor: not-allowed;
-        }
-
-        .export-buttons {
-            display: flex;
-            gap: 0.5rem;
-            margin-top: 1rem;
-        }
-
-        .export-btn {
-            background: #667eea;
-            color: white;
-            border: none;
-            padding: 0.5rem 1rem;
-            border-radius: 8px;
-            cursor: pointer;
-            font-size: 14px;
-            font-weight: 500;
-            transition: background 0.3s;
-        }
-
-        .export-btn:hover:not(:disabled) {
-            background: #5a6fd8;
-        }
-
-        .export-btn:disabled {
-            background: #ccc;
-            cursor: not-allowed;
-        }
-
-        code {
-            background-color: #fff7f7;
-            padding: 2px 6px;
-            border-radius: 4px;
-            font-family: 'Courier New', Courier, monospace;
-            color: #6b4800;
-            transition: background-color 0.3s ease;
-        }
-
-        code:hover {
-            background-color: #e0e0e0;
-            cursor: pointer;
-        }
-
-        .empty-state {
-            text-align: center;
-            color: #666;
-            padding: 2rem;
-        }
-
-        .empty-state-icon {
-            font-size: 48px;
-            margin-bottom: 1rem;
-            opacity: 0.3;
-        }
-
-        .processing {
-            text-align: center;
-            padding: 2rem;
-            color: #667eea;
-        }
-
-        .processing-spinner {
-            border: 3px solid #f3f3f3;
-            border-top: 3px solid #667eea;
-            border-radius: 50%;
-            width: 40px;
-            height: 40px;
-            animation: spin 1s linear infinite;
-            margin: 0 auto 1rem;
-        }
-
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-
-        .typing-indicator {
-            display: flex;
-            flex-direction: row;
-            gap: 6px;
-            align-items: center;
-            margin-top: 0.5rem;
-        }
-
-        .typing-dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background: #667eea;
-            animation: typing 1.4s infinite ease-in-out;
-        }
-
-        .typing-dot:nth-child(1) { animation-delay: -0.32s; }
-        .typing-dot:nth-child(2) { animation-delay: -0.16s; }
-        .typing-dot:nth-child(3) { animation-delay: 0s; }
-
-        @keyframes typing {
-            0%, 80%, 100% { transform: scale(0.8); opacity: 0.5; }
-            40% { transform: scale(1.2); opacity: 1; }
-        }
-
-        .error-message {
-            background: #fee;
-            color: #c33;
-            padding: 0.75rem;
-            border-radius: 8px;
-            border: 1px solid #fcc;
-        }
-
-        .success-message {
-            background: #d4edda;
-            color: #155724;
-            padding: 0.75rem;
-            border-radius: 8px;
-            border: 1px solid #c3e6cb;
-        }
-
-        .notification {
-            position: fixed;
-            top: 80px;
-            right: 20px;
-            z-index: 1001;
-            max-width: 350px;
-            padding: 1rem;
-            border-radius: 8px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
-            transform: translateX(100%);
-            transition: transform 0.3s ease;
-        }
-
-        .notification.show {
-            transform: translateX(0);
-        }
-
-        .loading-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0, 0, 0, 0.5);
-            z-index: 2000;
-            display: none;
-            align-items: center;
-            justify-content: center;
-            flex-direction: column;
-            gap: 1rem;
-        }
-
-        .loading-overlay.show {
-            display: flex;
-        }
-
-        .loading-overlay .processing-spinner {
-            width: 50px;
-            height: 50px;
-            border-width: 4px;
-        }
-
-        .loading-overlay p {
-            color: white;
-            font-size: 18px;
-            font-weight: bold;
-        }
-
-        .modal {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0, 0, 0, 0.5);
-            z-index: 2000;
-            display: none;
-            align-items: center;
-            justify-content: center;
-            opacity: 0;
-            transition: opacity 0.3s ease;
-        }
-
-        .modal.show {
-            display: flex;
-            opacity: 1;
-        }
-
-        .modal-content {
-            background: white;
-            border-radius: 12px;
-            padding: 2rem;
-            width: 100%;
-            max-width: 400px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.2);
-            position: relative;
-        }
-
-        .modal-content h2 {
-            font-size: 18px;
-            margin-bottom: 1.5rem;
-            color: #333;
-        }
-
-        .modal-content .close-btn {
-            position: absolute;
-            top: 1rem;
-            right: 1rem;
-            background: none;
-            border: none;
-            font-size: 18px;
-            cursor: pointer;
-            color: #666;
-        }
-
-        .modal-content .close-btn:hover {
-            color: #333;
-        }
-
-        .modal-content label {
-            display: block;
-            font-size: 14px;
-            color: #333;
-            margin-bottom: 0.5rem;
-        }
-
-        .modal-content input {
-            width: 100%;
-            padding: 0.75rem;
-            border: 1px solid #e1e5e9;
-            border-radius: 8px;
-            font-size: 14px;
-            margin-bottom: 1rem;
-            outline: none;
-            transition: border-color 0.3s;
-        }
-
-        .modal-content input:focus {
-            border-color: #667eea;
-            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-        }
-
-        .modal-content button[type="submit"] {
-            width: 100%;
-            padding: 0.75rem;
-            background: #667eea;
-            color: white;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            font-size: 14px;
-            font-weight: 500;
-            transition: background 0.3s;
-        }
-
-        .modal-content button[type="submit"]:hover:not(:disabled) {
-            background: #5a6fd8;
-        }
-
-        .modal-content button[type="submit"]:disabled {
-            background: #ccc;
-            cursor: not-allowed;
-        }
-
-        /* Media Queries */
-        @media (max-width: 1024px) {
-            .header { padding: 0.6rem 1.2rem; height: 55px; }
-            .header h1 { font-size: 18px; flex-shrink: 1; overflow: visible; }
-            .menu-btn { display: block; font-size: 20px; padding: 0.3rem; }
-            .logout-btn { padding: 0.35rem 0.7rem; font-size: 13px; }
-            .user-info { gap: 0.6rem; }
-            .user-icon { width: 30px; height: 30px; }
-            .user-email-tooltip { font-size: 13px; padding: 0.4rem 0.8rem; }
-            .sidebar { flex: 0 0 280px; width: 280px; }
-            .content-area { padding: 1.5rem 1.5rem 1.5rem 1rem; margin-left: 280px; }
-            .summary-section, .chat-section { padding: 1.5rem; }
-            .notification { top: 75px; }
-            .loading-overlay .processing-spinner { width: 45px; height: 45px; }
-            .loading-overlay p { font-size: 16px; }
-            .modal-content { max-width: 360px; }
-            .export-buttons { flex-direction: column; gap: 0.4rem; }
-            .export-btn { padding: 0.4rem 0.8rem; font-size: 13px; }
-        }
-
-        @media (max-width: 768px) {
-            .main-container { flex-direction: column; }
-            .menu-btn { display: block; }
-            .sidebar {
-                position: fixed;
-                top: 55px;
-                left: 0;
-                height: calc(100vh - 55px);
-                width: 280px;
-                transform: translateX(-100%);
-                z-index: 999;
-            }
-            .sidebar.open { transform: translateX(0); }
-            .content-area { padding: 1rem; margin-left: 0; overscroll-behavior: contain; }
-            .header { padding: 0.5rem 1rem; height: 50px; }
-            .header h1 { font-size: 16px; flex-shrink: 1; overflow: visible; }
-            .user-info { gap: 0.5rem; }
-            .logout-btn { padding: 0.3rem 0.6rem; font-size: 12px; }
-            .menu-btn { font-size: 18px; padding: 0.3rem; }
-            .user-icon { width: 28px; height: 28px; }
-            .user-email-tooltip { font-size: 12px; padding: 0.4rem 0.8rem; max-width: 80vw; white-space: normal; text-align: center; right: -10px; }
-            .upload-section { padding: 1rem; }
-            .upload-area { padding: 1rem 0.75rem; }
-            .upload-icon { font-size: 32px; }
-            .notes-list { padding: 0.75rem; }
-            .notes-list h3 { font-size: 15px; }
-            .note-item { padding: 0.6rem; }
-            .note-title { font-size: 12px; }
-            .note-date { font-size: 10px; }
-            .context-menu-trigger { font-size: 16px; padding: 2px 6px; }
-            .context-menu { min-width: 140px; right: 0.25rem; top: 2rem; }
-            .context-menu-item { padding: 0.6rem 0.8rem; font-size: 13px; gap: 0.5rem; }
-            .content-area { padding: 0.75rem; gap: 1.5rem; margin-left: 0; overscroll-behavior: contain; }
-            .summary-section, .chat-section { padding: 1rem; border-radius: 8px; }
-            .section-title { font-size: 16px; gap: 0.4rem; }
-            .summary-content, .message-content { font-size: 13px; }
-            .chat-messages { padding: 0.75rem; border-radius: 8px; max-height: 300px; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; touch-action: pan-y; }
-            .chat-input-container { gap: 0.5rem; }
-            .chat-input-container textarea { padding: 0.6rem 1rem; padding-right: 3rem; font-size: 13px; border-radius: 20px; min-height: 36px; max-height: 180px; }
-            .chat-input-container button { right: 0.4rem; bottom: 0.4rem; width: 30px; height: 30px; font-size: 13px; }
-            .chat-input-container button::before { font-size: 14px; }
-            .empty-state { padding: 1.5rem; }
-            .empty-state-icon { font-size: 40px; }
-            .processing-spinner { width: 35px; height: 35px; }
-            .notification { top: 70px; right: 10px; max-width: calc(100% - 20px); padding: 0.75rem; }
-            .loading-overlay .processing-spinner { width: 40px; height: 40px; }
-            .loading-overlay p { font-size: 15px; }
-            .modal-content { max-width: 90%; padding: 1.5rem; }
-            .modal-content h2 { font-size: 16px; }
-            .modal-content input { padding: 0.6rem; font-size: 13px; }
-            .modal-content button[type="submit"] { padding: 0.6rem; font-size: 13px; }
-            .export-buttons { flex-direction: column; gap: 0.4rem; }
-            .export-btn { padding: 0.4rem 0.8rem; font-size: 13px; }
-        }
-
-        @media (max-width: 480px) {
-            body { font-size: 14px; }
-            .header { padding: 0.4rem 0.8rem; height: 45px; display: flex; align-items: center; justify-content: space-between; }
-            .header h1 { font-size: 14px; flex-shrink: 1; overflow: visible; display: flex; align-items: center; gap: 0.4rem; }
-            .logout-btn { padding: 0.25rem 0.5rem; font-size: 11px; }
-            .menu-btn { font-size: 16px; padding: 0.25rem; }
-            .user-icon { width: 26px; height: 26px; }
-            .user-email-tooltip { font-size: 11px; padding: 0.3rem 0.6rem; max-width: 90vw; right: -5px; }
-            .main-container { margin-top: 45px; min-height: calc(100vh - 45px); }
-            .sidebar { width: 260px; top: 45px; height: calc(100vh - 45px); }
-            .upload-section { padding: 0.75rem; }
-            .upload-area { padding: 1rem 0.5rem; }
-            .upload-icon { font-size: 28px; }
-            .notes-list { padding: 0.5rem; }
-            .notes-list h3 { font-size: 14px; margin-bottom: 0.75rem; }
-            .note-item { padding: 0.5rem; margin-bottom: 0.4rem; }
-            .note-title { font-size: 11px; }
-            .note-date { font-size: 9px; }
-            .context-menu-trigger { font-size: 16px; padding: 2px 6px; }
-            .context-menu { min-width: 140px; right: 0.25rem; top: 2rem; }
-            .context-menu-item { padding: 0.6rem 0.8rem; font-size: 13px; gap: 0.5rem; }
-            .content-area { padding: 0.75rem; gap: 1.5rem; margin-left: 0; overscroll-behavior: contain; }
-            .summary-section { padding: 1rem; }
-            .chat-section { padding: 1rem; }
-            .section-title { font-size: 15px; gap: 0.4rem; }
-            .summary-content { font-size: 12px; }
-            .chat-messages { padding: 0.5rem; margin-bottom: 0.75rem; max-height: 250px; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; touch-action: pan-y; }
-            .message { padding: 0.6rem 0.8rem; max-width: 90%; margin-bottom: 0.75rem; }
-            .message-sender { font-size: 11px; margin-bottom: 0.3rem; }
-            .message-content { font-size: 12px; }
-            .chat-input-container { padding-top: 0.75rem; gap: 0.4rem; }
-            .chat-input-container textarea { padding: 0.5rem 0.8rem; padding-right: 2.8rem; font-size: 12px; border-radius: 18px; min-height: 34px; max-height: 160px; }
-            .chat-input-container button { right: 0.3rem; bottom: 0.3rem; width: 28px; height: 28px; font-size: 12px; }
-            .chat-input-container button::before { font-size: 13px; }
-            .empty-state { padding: 1rem; }
-            .empty-state-icon { font-size: 36px; margin-bottom: 0.75rem; }
-            .processing { padding: 1.5rem; }
-            .processing-spinner { width: 30px; height: 30px; border-width: 2px; }
-            .typing-dot { width: 7px; height: 7px; gap: 5px; }
-            .notification { top: 65px; right: 5px; max-width: calc(100% - 10px); padding: 0.6rem; font-size: 13px; }
-            .loading-overlay .processing-spinner { width: 35px; height: 35px; border-width: 3px; }
-            .loading-overlay p { font-size: 14px; }
-            .modal-content { max-width: 95%; padding: 1.2rem; }
-            .modal-content h2 { font-size: 15px; margin-bottom: 1.2rem; }
-            .modal-content input { padding: 0.5rem; font-size: 12px; }
-            .modal-content button[type="submit"] { padding: 0.5rem; font-size: 12px; }
-            .export-buttons { flex-direction: column; gap: 0.3rem; }
-            .export-btn { padding: 0.3rem 0.6rem; font-size: 12px; }
-        }
-
-        @media (max-width: 768px) {
-            .notes-list, .chat-messages {
-                overscroll-behavior: contain;
-                -webkit-overflow-scrolling: touch;
-            }
-        }
-    </style>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Smart Notes - Dashboard</title>
+<meta name="description" content="Smart Notes AI dashboard - Manage your PDFs, view AI summaries, and chat with your documents.">
+<link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Manrope:wght@500;700;800&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+  tailwind.config = {
+    darkMode: "class",
+    theme: {
+      extend: {
+        "colors": {
+          "tertiary-container": "#a17cec",
+          "surface-container-high": "#28283a",
+          "on-background": "#e3e0f8",
+          "surface-container-lowest": "#0c0c1d",
+          "error-container": "#93000a",
+          "surface-bright": "#38374a",
+          "surface-variant": "#333345",
+          "on-secondary-container": "#aab6cc",
+          "secondary": "#bcc7dd",
+          "secondary-fixed": "#d8e3fa",
+          "error": "#ffb4ab",
+          "outline": "#8f909e",
+          "surface": "#121222",
+          "tertiary-fixed-dim": "#d2bbff",
+          "outline-variant": "#444653",
+          "primary-container": "#7189f6",
+          "on-primary-fixed": "#001356",
+          "inverse-primary": "#3c55bf",
+          "inverse-surface": "#e3e0f8",
+          "tertiary-fixed": "#eaddff",
+          "tertiary": "#d2bbff",
+          "on-surface-variant": "#c5c5d5",
+          "surface-container-highest": "#333345",
+          "on-tertiary-fixed": "#25005a",
+          "on-tertiary-container": "#36007d",
+          "surface-container-low": "#1a1a2b",
+          "background": "#121222",
+          "on-secondary": "#263142",
+          "on-error": "#690005",
+          "secondary-container": "#3c475a",
+          "on-error-container": "#ffdad6",
+          "on-tertiary": "#3d0e84",
+          "on-primary": "#002388",
+          "on-primary-container": "#001e78",
+          "surface-container": "#1e1e2f",
+          "primary": "#b9c3ff",
+          "on-surface": "#e3e0f8",
+          "inverse-on-surface": "#2f2f41",
+          "surface-dim": "#121222",
+          "surface-tint": "#b9c3ff",
+          "secondary-fixed-dim": "#bcc7dd"
+        },
+        "borderRadius": {
+          "DEFAULT": "0.25rem",
+          "lg": "0.5rem",
+          "xl": "0.75rem",
+          "full": "9999px"
+        },
+        "fontFamily": {
+          "headline": ["Manrope"],
+          "body": ["Inter"],
+          "label": ["Inter"]
+        }
+      }
+    }
+  }
+</script>
+<style>
+  .material-symbols-outlined {
+    font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+    vertical-align: middle;
+  }
+  .glass-panel {
+    background: rgba(40, 40, 58, 0.6);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+  }
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: #121222; }
+  ::-webkit-scrollbar-thumb { background: #333345; border-radius: 10px; }
+  .note-item { transition: all 0.2s ease; }
+  .note-item:hover { background: rgba(40, 40, 58, 0.8); }
+  .note-item.active { background: rgba(113, 137, 246, 0.2); border-left: 3px solid #7189f6; }
+  .context-menu { min-width: 160px; z-index: 1000; }
+  #chat-messages .user-message { background: rgba(113,137,246,0.15); border: 1px solid rgba(113,137,246,0.2); border-radius: 1rem 1rem 0.25rem 1rem; }
+  #chat-messages .ai-message { background: rgba(40,40,58,0.8); border: 1px solid rgba(255,255,255,0.05); border-radius: 1rem 1rem 1rem 0.25rem; }
+  .typing-dots span { animation: blink 1.4s infinite both; }
+  .typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+  .typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes blink { 0%, 80%, 100% { opacity: 0; } 40% { opacity: 1; } }
+  #upload-area { border: 2px dashed rgba(113,137,246,0.3); transition: all 0.3s ease; }
+  #upload-area:hover, #upload-area.drag-over { border-color: #7189f6; background: rgba(113,137,246,0.05); }
+  .toast { animation: slideIn 0.3s ease; }
+  @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+</style>
 </head>
-<body>
-    <div class="loading-overlay" id="loading-overlay">
-        <div class="processing-spinner"></div>
-        <p>Loading...</p>
+<body class="bg-background text-on-background font-body min-h-screen selection:bg-primary-container/30">
+
+<!-- Fixed Header -->
+<header class="fixed top-0 left-0 right-0 z-50 h-[60px] flex items-center justify-between px-6 bg-gradient-to-r from-[#1e1e2f] to-[#28283a] backdrop-blur-xl shadow-2xl shadow-indigo-950/20 border-b border-white/5">
+  <div class="flex items-center gap-3">
+    <span class="text-xl font-bold tracking-tighter text-[#b9c3ff] font-headline flex items-center gap-2">
+      <span class="material-symbols-outlined" style="font-variation-settings:'FILL' 1;">auto_stories</span>
+      Smart Notes
+    </span>
+  </div>
+  <div class="flex items-center gap-4">
+    <!-- User Icon + Dropdown -->
+    <div class="relative group cursor-pointer" id="user-menu-wrapper">
+      <div class="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-white/5 transition-colors" id="user-menu-trigger">
+        <span class="material-symbols-outlined text-[#b9c3ff]" style="font-variation-settings:'FILL' 1;">account_circle</span>
+        <span class="text-sm font-medium text-slate-400 hidden md:block" id="user-email-display">User</span>
+        <span class="material-symbols-outlined text-slate-500 text-sm">expand_more</span>
+      </div>
+      <!-- Dropdown -->
+      <div class="absolute right-0 top-full mt-2 w-52 glass-panel rounded-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-300 p-2 shadow-2xl border border-white/10" id="user-dropdown">
+        <div class="px-3 py-2 text-xs text-on-surface-variant uppercase tracking-widest font-bold border-b border-white/5 mb-1" id="dropdown-email">Account</div>
+        <button onclick="openChangePasswordModal()" class="w-full text-left px-3 py-2 text-sm hover:bg-white/5 rounded-lg cursor-pointer transition-colors text-on-surface">
+          <span class="material-symbols-outlined text-sm mr-2">lock</span>Change Password
+        </button>
+      </div>
+    </div>
+    <!-- Logout -->
+    <button id="logout-btn" class="bg-white/10 hover:bg-white/20 text-on-surface px-5 py-1.5 rounded-full text-sm font-semibold backdrop-blur-md active:scale-95 transition-all">
+      Logout
+    </button>
+    <!-- Mobile Hamburger -->
+    <button class="md:hidden bg-white/10 p-2 rounded-lg" id="mobile-menu-btn">
+      <span class="material-symbols-outlined text-[#b9c3ff]">menu</span>
+    </button>
+  </div>
+</header>
+
+<!-- Sidebar -->
+<aside class="h-screen w-72 fixed left-0 top-0 bg-[#121222] flex flex-col py-6 gap-4 pt-[72px] overflow-y-auto z-40 border-r border-white/5" id="sidebar">
+  <div class="px-5 mb-2">
+    <div class="text-[#d2bbff] font-headline font-bold text-base mb-0.5">My Library</div>
+    <div class="text-slate-500 text-[10px] font-medium uppercase tracking-widest">AI Assistant Active</div>
+  </div>
+
+  <!-- Upload Area -->
+  <div class="px-5">
+    <div id="upload-area" class="rounded-xl p-6 text-center cursor-pointer bg-surface-container-low group">
+      <span class="material-symbols-outlined text-3xl text-outline mb-2 group-hover:text-primary-container transition-colors block">upload_file</span>
+      <p class="text-sm font-medium text-on-surface-variant">Click to upload PDF</p>
+      <p class="text-[10px] text-outline mt-1 italic">Max 5MB &middot; PDF only</p>
+    </div>
+    <input type="file" id="file-input" accept=".pdf" class="hidden"/>
+  </div>
+
+  <!-- Notes List -->
+  <nav class="flex flex-col gap-0.5 px-3 overflow-y-auto flex-1" id="notes-nav">
+    <div class="px-3 py-2 text-[10px] font-bold text-tertiary uppercase tracking-[0.2em] mb-1">Notes</div>
+    <div id="notes-list" class="flex flex-col gap-0.5">
+      <!-- Notes injected by JS -->
+      <div class="text-center text-slate-500 text-sm py-8" id="notes-empty-state">
+        <span class="material-symbols-outlined block text-3xl mb-2 mx-auto">inbox</span>
+        No notes yet.<br>Upload a PDF to get started.
+      </div>
+    </div>
+  </nav>
+</aside>
+
+<!-- Context Menu (right-click note) -->
+<div id="context-menu" class="fixed context-menu glass-panel rounded-xl p-2 shadow-2xl border border-white/10 hidden" style="z-index:2000;">
+  <button class="w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-white/5 transition-colors text-on-surface flex items-center gap-2" id="ctx-rename">
+    <span class="material-symbols-outlined text-sm">edit</span> Rename
+  </button>
+  <button class="w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-white/5 transition-colors text-on-surface flex items-center gap-2" id="ctx-export">
+    <span class="material-symbols-outlined text-sm">download</span> Export PDF
+  </button>
+  <div class="h-px w-full bg-white/10 my-1"></div>
+  <button class="w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-error-container/20 transition-colors text-error flex items-center gap-2" id="ctx-delete">
+    <span class="material-symbols-outlined text-sm">delete</span> Delete
+  </button>
+</div>
+
+<!-- Main Content Area -->
+<main class="ml-72 pt-[60px] min-h-screen bg-gradient-to-br from-[#0c0c1d] via-[#121222] to-[#1e1e2f] p-6">
+  <div class="max-w-7xl mx-auto">
+
+    <!-- Welcome / Empty State -->
+    <div id="empty-state" class="flex flex-col items-center justify-center min-h-[70vh] text-center">
+      <div class="glass-panel rounded-3xl p-12 border border-outline-variant/10 max-w-md">
+        <span class="material-symbols-outlined text-6xl text-primary/50 mb-4 block" style="font-variation-settings:'FILL' 1;">auto_stories</span>
+        <h2 class="font-headline text-2xl font-bold text-on-surface mb-3">Welcome to Smart Notes</h2>
+        <p class="text-on-surface-variant text-sm leading-relaxed">Select a note from the sidebar or upload a PDF to get started. Your AI assistant will generate summaries and answer your questions.</p>
+      </div>
     </div>
 
-    <div class="modal" id="change-password-modal">
-        <div class="modal-content">
-            <button class="close-btn" onclick="closeChangePasswordModal()">×</button>
-            <h2>Change Password</h2>
-            <form id="change-password-form">
-                <label for="change-email">Email</label>
-                <input type="email" id="change-email" placeholder="Enter your email" required>
-                <label for="old-password">Old Password</label>
-                <input type="password" id="old-password" placeholder="Enter old password" required>
-                <label for="new-password">New Password</label>
-                <input type="password" id="new-password" placeholder="Enter new password" required>
-                <button type="submit">Change Password</button>
-            </form>
+    <!-- Note Content Area (hidden until note selected) -->
+    <div id="note-content" class="hidden grid grid-cols-12 gap-6">
+
+      <!-- Note Header -->
+      <div class="col-span-12 flex items-center justify-between mb-2">
+        <div>
+          <h1 class="font-headline text-3xl font-extrabold tracking-tight text-on-surface" id="current-note-title">Note</h1>
+          <p class="text-tertiary text-xs font-medium tracking-wide flex items-center gap-2 mt-1">
+            <span class="w-1.5 h-1.5 rounded-full bg-tertiary inline-block"></span>
+            AI ANALYSIS ACTIVE
+          </p>
         </div>
+      </div>
+
+      <!-- Summary Card -->
+      <section class="col-span-12 lg:col-span-5">
+        <div class="glass-panel rounded-3xl p-6 h-full flex flex-col border border-white/5 min-h-[400px]">
+          <div class="flex items-center gap-3 mb-5">
+            <div class="w-9 h-9 rounded-xl bg-primary-container/20 flex items-center justify-center">
+              <span class="material-symbols-outlined text-primary text-lg">description</span>
+            </div>
+            <h2 class="font-headline text-lg font-bold text-on-surface">📄 Summary</h2>
+          </div>
+          <!-- Summary Loading State -->
+          <div id="summary-loading" class="hidden flex flex-col items-center justify-center flex-1 gap-3">
+            <div class="relative w-10 h-10">
+              <div class="absolute inset-0 border-2 border-primary/20 rounded-full"></div>
+              <div class="absolute inset-0 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+            </div>
+            <span class="text-sm text-on-surface-variant">Generating summary...</span>
+          </div>
+          <!-- Summary Content -->
+          <div id="summary-content" class="flex-1 overflow-y-auto text-on-surface-variant leading-relaxed text-sm space-y-3 prose prose-invert max-w-none">
+          </div>
+        </div>
+      </section>
+
+      <!-- Chat Card -->
+      <section class="col-span-12 lg:col-span-7 flex flex-col">
+        <div class="glass-panel rounded-3xl flex flex-col border border-white/5 overflow-hidden shadow-2xl" style="height: calc(100vh - 200px); min-height: 500px;">
+          <!-- Chat Header -->
+          <div class="px-6 py-4 border-b border-white/5 flex items-center justify-between bg-white/5 flex-shrink-0">
+            <div class="flex items-center gap-3">
+              <div class="w-9 h-9 rounded-full bg-gradient-to-br from-primary-container to-tertiary flex items-center justify-center shadow-lg">
+                <span class="material-symbols-outlined text-on-primary text-lg" style="font-variation-settings: 'FILL' 1;">psychology</span>
+              </div>
+              <div>
+                <h2 class="font-headline text-base font-bold text-on-surface">🤖 Ask AI</h2>
+                <p class="text-[10px] text-tertiary font-bold tracking-widest">CONTEXT-AWARE ASSISTANT</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Chat Messages -->
+          <div class="flex-1 overflow-y-auto p-5 space-y-4" id="chat-messages">
+            <div class="flex items-start gap-3 max-w-[88%] ai-message-wrap" id="chat-welcome">
+              <div class="w-7 h-7 rounded-lg bg-surface-container-highest flex-shrink-0 flex items-center justify-center mt-1">
+                <span class="material-symbols-outlined text-sm text-tertiary">smart_toy</span>
+              </div>
+              <div class="ai-message p-3 text-sm text-on-surface leading-relaxed">
+                Hello! I'm your AI assistant. Select a note and I'll help you explore, understand, and analyze its content.
+              </div>
+            </div>
+          </div>
+
+          <!-- Chat Input -->
+          <div class="p-4 bg-white/5 border-t border-white/5 flex-shrink-0">
+            <div class="relative flex items-center mb-3">
+              <textarea id="chat-input" class="w-full bg-surface-container-lowest border-none focus:ring-2 focus:ring-primary-container/50 rounded-2xl py-3 pl-4 pr-14 text-sm text-on-surface placeholder:text-slate-500 shadow-inner resize-none" placeholder="Ask anything about your note..." rows="1" style="max-height:120px;"></textarea>
+              <button id="send-btn" class="absolute right-2 w-9 h-9 bg-primary-container text-on-primary rounded-xl flex items-center justify-center shadow-lg hover:scale-105 active:scale-95 transition-all self-end mb-1">
+                <span class="material-symbols-outlined text-sm">send</span>
+              </button>
+            </div>
+            <div class="flex justify-end">
+              <button id="export-chat-btn" class="flex items-center gap-2 bg-tertiary/20 text-tertiary px-4 py-2 rounded-xl text-xs font-bold hover:bg-tertiary/30 transition-all active:scale-95 border border-tertiary/20">
+                <span class="material-symbols-outlined text-sm">picture_as_pdf</span>
+                Export Chat as PDF
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
     </div>
+  </div>
+</main>
 
-    <div class="header">
-        <button class="menu-btn" onclick="toggleSidebar()">☷</button>
-        <h1>📚 Smart Notes Dashboard</h1>
-        <div class="user-info" id="user-info">
-            <svg class="user-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-                <circle cx="12" cy="7" r="4"></circle>
-            </svg>
-            <div class="user-email-tooltip" id="user-email">
-                <div class="tooltip-item" id="email-display">user@example.com</div>
-                <div class="tooltip-item" onclick="openChangePasswordModal()">Change Password</div>
-            </div>
-            <button class="logout-btn" onclick="logout()">Logout</button>
-        </div>
+<!-- Loading Overlay -->
+<div id="loading-overlay" class="fixed inset-0 z-[100] bg-background/90 backdrop-blur-xl items-center justify-center flex-col gap-6 hidden">
+  <div class="relative w-16 h-16">
+    <div class="absolute inset-0 border-4 border-primary/20 rounded-full"></div>
+    <div class="absolute inset-0 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
+  </div>
+  <div class="text-center">
+    <h4 class="text-xl font-headline font-bold text-primary mb-2">Processing your PDF...</h4>
+    <p class="text-on-surface-variant max-w-xs mx-auto text-sm">Our AI is synthesizing the content and extracting key insights.</p>
+  </div>
+</div>
+
+<!-- Rename Note Modal -->
+<div id="rename-modal" class="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm items-center justify-center p-4 hidden">
+  <div class="bg-surface-container-high w-full max-w-md rounded-3xl p-8 border border-white/10 shadow-2xl">
+    <div class="flex items-center justify-between mb-6">
+      <h3 class="text-xl font-headline font-bold">Rename Note</h3>
+      <button onclick="closeRenameModal()" class="w-8 h-8 rounded-lg bg-white/5 hover:bg-white/10 flex items-center justify-center transition-colors">
+        <span class="material-symbols-outlined text-sm">close</span>
+      </button>
     </div>
-
-    <div class="main-container">
-        <div class="sidebar" id="sidebar">
-            <div class="upload-section">
-                <div class="upload-area" onclick="document.getElementById('file-input').click()">
-                    <div class="upload-icon">📁</div>
-                    <p><strong>Upload PDF</strong></p>
-                    <p style="font-size: 12px; margin-top: 0.5rem;">Drag & drop or click</p>
-                </div>
-                <input type="file" id="file-input" class="file-input" accept=".pdf">
-            </div>
-
-            <div class="notes-list">
-                <h3>Your Notes</h3>
-                <div id="notes-container"></div>
-            </div>
-        </div>
-
-        <div class="content-area">
-            <div class="summary-section">
-                <div class="section-title">📝 Summary</div>
-                <div id="summary-content" class="summary-content">
-                    <div class="empty-state">
-                        <div class="empty-state-icon">📄</div>
-                        <p>Upload a PDF file to see its summary here</p>
-                    </div>
-                </div>
-                <div class="export-buttons">
-                    <button class="export-btn" id="export-pdf" disabled onclick="exportToPDF()">Export as PDF</button>
-                </div>
-            </div>
-
-            <div class="chat-section">
-                <div class="section-title">💬 Ask Questions</div>
-                <div id="chat-messages" class="chat-messages">
-                    <div class="empty-state">
-                        <div class="empty-state-icon">🤖</div>
-                        <p>Ask questions about your uploaded content</p>
-                    </div>
-                </div>
-                <div class="chat-input-container">
-                    <textarea id="chat-input" placeholder="Ask a question about your notes..." disabled></textarea>
-                    <button id="chat-send" disabled></button>
-                </div>
-            </div>
-        </div>
+    <label class="text-xs font-bold text-tertiary uppercase tracking-widest mb-2 block">New Title</label>
+    <input id="rename-input" class="w-full bg-surface-container-lowest border border-outline-variant rounded-xl py-3 px-4 text-on-surface mb-6 focus:ring-2 focus:ring-primary focus:border-primary outline-none" type="text" placeholder="Enter new note name"/>
+    <div class="flex gap-3">
+      <button onclick="closeRenameModal()" class="flex-1 py-3 px-6 rounded-xl font-bold bg-white/5 hover:bg-white/10 transition-colors">Cancel</button>
+      <button onclick="confirmRename()" class="flex-1 py-3 px-6 rounded-xl font-bold bg-primary-container text-on-primary hover:brightness-110 transition-all shadow-lg">Save</button>
     </div>
-
-    <script>
-        let currentUser = null;
-        let currentNote = null;
-        let notes = [];
-        let isLoading = false;
-
-        function showLoading() {
-            if (!isLoading) {
-                isLoading = true;
-                document.body.classList.add('loading');
-                document.getElementById('loading-overlay').classList.add('show');
-            }
-        }
-
-        function hideLoading() {
-            if (isLoading) {
-                isLoading = false;
-                document.body.classList.remove('loading');
-                document.getElementById('loading-overlay').classList.remove('show');
-            }
-        }
-
-        async function exportToPDF() {
-            if (isLoading || !currentNote) {
-                showNotification('Please select a note to export', 'error');
-                return;
-            }
-            showLoading();
-            try {
-                const token = localStorage.getItem('token');
-                const response = await fetch(`/api/notes/${currentNote.id}/export`, {
-                    method: 'GET',
-                    headers: {
-                        'Authorization': `Bearer ${token}`,
-                        'Accept': 'application/pdf'
-                    }
-                });
-
-                if (response.ok) {
-                    const blob = await response.blob();
-                    const url = window.URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = `${currentNote.title}.pdf`;
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
-                    window.URL.revokeObjectURL(url);
-                    showNotification('PDF exported successfully', 'success');
-                } else {
-                    const errorData = await response.json();
-                    showNotification(errorData.error || 'Failed to export PDF', 'error');
-                }
-            } catch (error) {
-                console.error('Export PDF error:', error);
-                showNotification('Network error: ' + error.message, 'error');
-            } finally {
-                hideLoading();
-            }
-        }
-
-        function renderChatHistory(chats) {
-            const container = document.getElementById('chat-messages');
-            if (chats.length === 0) {
-                container.innerHTML = '<div class="empty-state" style="padding: 2rem;"><p>No chat history. Ask your first question!</p></div>';
-                return;
-            }
-
-            container.innerHTML = chats.map(chat => `
-                <div class="message user">
-                    <div class="message-sender">You</div>
-                    <div class="message-content">${chat.user_message}</div>
-                </div>
-                <div class="message ai">
-                    <div class="message-sender">AI Assistant</div>
-                    <div class="message-content">${chat.ai_response}</div>
-                </div>
-            `).join('');
-            container.scrollTop = container.scrollHeight;
-        }
-
-        document.addEventListener('click', (e) => {
-            if (isLoading) return;
-            if (!e.target.closest('.context-menu') && !e.target.closest('.context-menu-trigger')) {
-                document.querySelectorAll('.context-menu.show').forEach(menu => menu.classList.remove('show'));
-            }
-            if (!e.target.closest('.modal-content') && !e.target.closest('.user-email-tooltip') && !e.target.closest('.user-icon')) {
-                closeChangePasswordModal();
-                document.getElementById('user-info').classList.remove('active');
-            }
-            if (window.innerWidth <= 768 && !e.target.closest('.sidebar') && !e.target.closest('.menu-btn')) {
-                const sidebar = document.getElementById('sidebar');
-                sidebar.classList.remove('open');
-            }
-            if (e.target.closest('.user-icon') && window.innerWidth <= 768) {
-                const userInfo = document.getElementById('user-info');
-                userInfo.classList.toggle('active');
-            }
-        });
-
-        document.addEventListener('DOMContentLoaded', async () => {
-            const token = localStorage.getItem('token');
-            const user = JSON.parse(localStorage.getItem('user') || '{}');
-
-            if (!token || !user.id) {
-                window.location.href = '/';
-                return;
-            }
-
-            currentUser = user;
-            document.getElementById('email-display').textContent = user.email;
-
-            await loadNotes();
-            setupFileUpload();
-            setupTextareaResize();
-            setupChangePasswordForm();
-        });
-
-        function toggleSidebar() {
-            if (isLoading) return;
-            const sidebar = document.getElementById('sidebar');
-            sidebar.classList.toggle('open');
-        }
-
-        async function loadNotes() {
-            showLoading();
-            try {
-                const token = localStorage.getItem('token');
-                const response = await fetch('/api/notes', {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-
-                if (response.ok) {
-                    const data = await response.json();
-                    notes = data.notes;
-                    renderNotes();
-                } else {
-                    const errorData = await response.json();
-                    showNotification(errorData.error || 'Failed to load notes', 'error');
-                }
-            } catch (error) {
-                showNotification('Error loading notes: ' + error.message, 'error');
-            } finally {
-                hideLoading();
-            }
-        }
-
-        function renderNotes() {
-            const container = document.getElementById('notes-container');
-            if (!notes.length) {
-                container.innerHTML = '<div class="empty-state" style="padding: 1rem; font-size: 13px; color: #888;"><p>No notes yet. Upload a file to get started!</p></div>';
-                return;
-            }
-
-            container.innerHTML = notes.map((note, idx) => `
-                <div class="note-item" data-note-idx="${idx}">
-                    <div class="note-header">
-                        <div class="note-title">${note.title}</div>
-                        <button class="context-menu-trigger" onclick="event.stopPropagation(); toggleContextMenu('${note.id}')">
-                            ⋮
-                        </button>
-                    </div>
-                    <div class="note-date">${new Date(note.created_at).toLocaleString()}</div>
-                    <div class="context-menu" id="context-menu-${note.id}">
-                        <div class="context-menu-item" onclick="event.stopPropagation(); renameNote('${note.id}')">
-                            <span>📝 Rename</span>
-                        </div>
-                        <div class="context-menu-item delete" onclick="event.stopPropagation(); deleteNote('${note.id}')">
-                            <span>🗑️ Delete</span>
-                        </div>
-                    </div>
-                </div>
-            `).join('');
-
-            document.querySelectorAll('.note-item').forEach(item => {
-                item.onclick = function() {
-                    if (isLoading) return;
-                    const idx = parseInt(item.getAttribute('data-note-idx'));
-                    selectNote(notes[idx], item);
-                };
-            });
-        }
-
-        async function selectNote(note, noteElement) {
-            showLoading();
-            document.querySelectorAll('.note-item').forEach(item => item.classList.remove('active'));
-            if (noteElement) noteElement.classList.add('active');
-
-            currentNote = note;
-
-            document.getElementById('summary-content').innerHTML = `
-                <div class="summary-content">${note.summary || 'No summary available.'}</div>
-            `;
-            await loadChatHistory(note.id);
-            document.getElementById('chat-input').disabled = false;
-            document.getElementById('chat-send').disabled = false;
-            document.getElementById('export-pdf').disabled = false;
-
-            if (window.innerWidth <= 768) {
-                document.getElementById('sidebar').classList.remove('open');
-            }
-            hideLoading();
-        }
-
-        async function loadChatHistory(noteId) {
-            try {
-                const token = localStorage.getItem('token');
-                const response = await fetch(`/api/chat/history/${noteId}`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-
-                if (response.ok) {
-                    const data = await response.json();
-                    renderChatHistory(data.chats);
-                } else {
-                    const errorData = await response.json();
-                    showNotification(errorData.error || 'Failed to load chat history', 'error');
-                }
-            } catch (error) {
-                console.error('Error loading chat history:', error);
-                showNotification('Error loading chat history: ' + error.message, 'error');
-            }
-        }
-
-        async function sendMessage() {
-            if (isLoading) return;
-            const chatInput = document.getElementById('chat-input');
-            const chatSendBtn = document.getElementById('chat-send');
-            const message = chatInput.value.trim();
-
-            if (!message) {
-                showNotification('Please enter a message', 'error');
-                return;
-            }
-
-            if (!currentNote) {
-                showNotification('Please select a note to chat about', 'error');
-                return;
-            }
-
-            chatInput.disabled = true;
-            chatSendBtn.disabled = true;
-
-            const chatMessages = document.getElementById('chat-messages');
-            const typingIndicator = `
-                <div class="message ai typing-indicator">
-                    <div class="message-sender">AI Assistant</div>
-                    <div class="message-content">
-                        <div style="display: flex; flex-direction: row; gap: 6px;">
-                            <div class="typing-dot"></div>
-                            <div class="typing-dot"></div>
-                            <div class="typing-dot"></div>
-                        </div>
-                    </div>
-                </div>
-            `;
-
-            chatMessages.innerHTML += `
-                <div class="message user">
-                    <div class="message-sender">You</div>
-                    <div class="message-content">${message}</div>
-                </div>
-                ${typingIndicator}
-            `;
-            chatMessages.scrollTop = chatMessages.scrollHeight;
-
-            try {
-                const token = localStorage.getItem('token');
-                const response = await fetch('/api/chat', {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${token}`,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        message: message,
-                        note_id: currentNote.id
-                    })
-                });
-
-                const data = await response.json();
-
-                if (response.ok) {
-                    chatMessages.removeChild(chatMessages.querySelector('.typing-indicator'));
-                    chatMessages.innerHTML += `
-                        <div class="message ai">
-                            <div class="message-sender">AI Assistant</div>
-                            <div class="message-content">${data.response}</div>
-                        </div>
-                    `;
-                    chatMessages.scrollTop = chatMessages.scrollHeight;
-
-                    chatInput.value = '';
-                    showNotification('Message sent successfully', 'success');
-                } else {
-                    chatMessages.removeChild(chatMessages.querySelector('.typing-indicator'));
-                    showNotification(data.error || 'Failed to send message', 'error');
-                }
-            } catch (error) {
-                console.error('Chat error:', error);
-                chatMessages.removeChild(chatMessages.querySelector('.typing-indicator'));
-                showNotification(`Network error: ${error.message}`, 'error');
-            } finally {
-                chatInput.disabled = false;
-                chatSendBtn.disabled = false;
-                chatInput.focus();
-            }
-        }
-
-        function setupFileUpload() {
-            const fileInput = document.getElementById('file-input');
-            const uploadArea = document.querySelector('.upload-area');
-            const chatSendBtn = document.getElementById('chat-send');
-            const chatInput = document.getElementById('chat-input');
-
-            fileInput.addEventListener('change', handleFileSelect);
-            uploadArea.addEventListener('dragover', (e) => {
-                if (isLoading) return;
-                e.preventDefault();
-                uploadArea.classList.add('dragover');
-            });
-            uploadArea.addEventListener('dragleave', () => {
-                if (isLoading) return;
-                uploadArea.classList.remove('dragover');
-            });
-            uploadArea.addEventListener('drop', (e) => {
-                if (isLoading) return;
-                e.preventDefault();
-                uploadArea.classList.remove('dragover');
-                const files = e.dataTransfer.files;
-                if (files.length > 0) {
-                    handleFileUpload(files[0]);
-                }
-            });
-            chatInput.addEventListener('keypress', (e) => {
-                if (isLoading) return;
-                if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    sendMessage();
-                }
-            });
-            chatSendBtn.addEventListener('click', function() {
-                if (isLoading) return;
-                sendMessage();
-            });
-        }
-
-        function setupTextareaResize() {
-            const textarea = document.getElementById('chat-input');
-            textarea.addEventListener('input', function() {
-                if (isLoading) return;
-                this.style.height = 'auto';
-                this.style.height = `${Math.min(this.scrollHeight, parseInt(getComputedStyle(this).maxHeight))}px`;
-            });
-        }
-
-        async function handleFileSelect(e) {
-            if (isLoading) return;
-            const file = e.target.files[0];
-            if (file) {
-                handleFileUpload(file);
-            }
-        }
-
-        async function handleFileUpload(file) {
-            if (isLoading) return;
-            const maxSize = 5 * 1024 * 1024;
-
-            if (file.size > maxSize) {
-                showNotification(`File too large. Maximum size: ${maxSize / (1024 * 1024)}MB`, 'error');
-                return;
-            }
-
-            if (!file.type.startsWith('application/pdf')) {
-                showNotification('Only PDF files are supported', 'error');
-                return;
-            }
-
-            showLoading();
-            document.getElementById('summary-content').innerHTML = `
-                <div class="processing">
-                    <div class="processing-spinner"></div>
-                    <p>Processing your file...</p>
-                </div>
-            `;
-
-            const formData = new FormData();
-            formData.append('file', file);
-
-            try {
-                const token = localStorage.getItem('token');
-                const response = await fetch('/api/upload/pdf', {
-                    method: 'POST',
-                    headers: { 'Authorization': `Bearer ${token}` },
-                    body: formData
-                });
-
-                console.log(`Response status: ${response.status}`);
-                const data = await response.json();
-                console.log('Response data:', data);
-
-                if (response.ok) {
-                    await loadNotes();
-
-                    const newNote = notes.find(n => n.id === data.note_id);
-                    if (newNote) {
-                        currentNote = newNote;
-
-                        document.querySelectorAll('.note-item').forEach((item, index) => {
-                            if (notes[index].id === data.note_id) {
-                                item.classList.add('active');
-                            } else {
-                                item.classList.remove('active');
-                            }
-                        });
-
-                        document.getElementById('summary-content').innerHTML = `
-                            <div class="summary-content">${data.summary || 'No summary available.'}</div>
-                        `;
-
-                        document.getElementById('chat-messages').innerHTML = `
-                            <div class="empty-state" style="padding: 2rem;">
-                                <div class="empty-state-icon">🤖</div>
-                                <p>Ask questions about your uploaded content</p>
-                            </div>
-                        `;
-
-                        document.getElementById('chat-input').disabled = false;
-                        document.getElementById('chat-send').disabled = false;
-                        document.getElementById('export-pdf').disabled = false;
-
-                        showNotification('File processed successfully! Summary generated.', 'success');
-
-                        if (window.innerWidth <= 768) {
-                            document.getElementById('sidebar').classList.remove('open');
-                        }
-                    } else {
-                        showNotification('Note not found in updated list', 'error');
-                    }
-                } else {
-                    showNotification(data.error || 'Upload failed', 'error');
-                    document.getElementById('summary-content').innerHTML = `
-                        <div class="empty-state">
-                            <div class="empty-state-icon">📄</div>
-                            <p>Upload a PDF file to see its summary here</p>
-                        </div>
-                    `;
-                }
-            } catch (error) {
-                console.error('Upload error:', error);
-                showNotification(`Network error: ${error.message}`, 'error');
-                document.getElementById('summary-content').innerHTML = `
-                    <div class="empty-state">
-                        <div class="empty-state-icon">📄</div>
-                        <p>Upload a PDF file to see its summary here</p>
-                    </div>
-                `;
-            } finally {
-                hideLoading();
-                document.getElementById('file-input').value = '';
-            }
-        }
-
-        function showNotification(message, type = 'info') {
-            const notification = document.createElement('div');
-            notification.className = `notification ${type === 'error' ? 'error-message' : 'success-message'}`;
-            notification.textContent = message;
-
-            document.body.appendChild(notification);
-            setTimeout(() => notification.classList.add('show'), 100);
-            setTimeout(() => {
-                notification.classList.remove('show');
-                setTimeout(() => {
-                    if (document.body.contains(notification)) {
-                        document.body.removeChild(notification);
-                    }
-                }, 300);
-            }, 4000);
-        }
-
-        async function deleteNote(noteId) {
-            if (isLoading) return;
-            if (!confirm('Are you sure you want to delete this note? This will remove the PDF, all chats, and cannot be undone.')) {
-                return;
-            }
-
-            showLoading();
-            try {
-                const response = await fetch(`/api/notes/${noteId}`, {
-                    method: 'DELETE',
-                    headers: {
-                        'Authorization': `Bearer ${localStorage.getItem('token')}`,
-                        'Content-Type': 'application/json'
-                    }
-                });
-
-                if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(errorData.error || 'Failed to delete note');
-                }
-
-                notes = notes.filter(note => note.id !== noteId);
-
-                if (currentNote && currentNote.id === noteId) {
-                    currentNote = null;
-                    document.getElementById('summary-content').innerHTML = `
-                        <div class="empty-state">
-                            <div class="empty-state-icon">📄</div>
-                            <p>Upload a PDF file to see its summary here</p>
-                        </div>
-                    `;
-                    document.getElementById('chat-messages').innerHTML = `
-                        <div class="empty-state">
-                            <div class="empty-state-icon">🤖</div>
-                            <p>Ask questions about your uploaded content</p>
-                        </div>
-                    `;
-                    document.getElementById('chat-input').disabled = true;
-                    document.getElementById('chat-send').disabled = true;
-                    document.getElementById('export-pdf').disabled = true;
-                }
-
-                renderNotes();
-                showNotification('Note deleted successfully', 'success');
-            } catch (error) {
-                console.error('Error deleting note:', error);
-                showNotification(`Failed to delete note: ${error.message}`, 'error');
-            } finally {
-                hideLoading();
-            }
-        }
-
-        function toggleContextMenu(noteId) {
-            if (isLoading) return;
-            document.querySelectorAll('.context-menu.show').forEach(menu => {
-                if (menu.id !== `context-menu-${noteId}`) {
-                    menu.classList.remove('show');
-                }
-            });
-
-            const menu = document.getElementById(`context-menu-${noteId}`);
-            menu.classList.toggle('show');
-        }
-
-        async function renameNote(noteId) {
-            if (isLoading) return;
-            const note = notes.find(n => n.id === noteId);
-            if (!note) return;
-
-            const newTitle = prompt('Enter new name for the note:', note.title);
-            if (!newTitle || newTitle === note.title) return;
-
-            showLoading();
-            try {
-                const response = await fetch(`/api/notes/${noteId}/rename`, {
-                    method: 'PUT',
-                    headers: {
-                        'Authorization': `Bearer ${localStorage.getItem('token')}`,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ title: newTitle })
-                });
-
-                if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(errorData.error || 'Failed to rename note');
-                }
-
-                note.title = newTitle;
-                renderNotes();
-
-                if (currentNote && currentNote.id === noteId) {
-                    currentNote.title = newTitle;
-                }
-
-                showNotification('Note renamed successfully', 'success');
-            } catch (error) {
-                console.error('Error renaming note:', error);
-                showNotification(`Failed to rename note: ${error.message}`, 'error');
-            } finally {
-                hideLoading();
-            }
-        }
-
-        function logout() {
-            if (isLoading) return;
-            if (confirm('Are you sure you want to logout?')) {
-                localStorage.removeItem('token');
-                localStorage.removeItem('user');
-                window.location.href = '/';
-            }
-        }
-
-        function openChangePasswordModal() {
-            if (isLoading) return;
-            document.getElementById('change-password-modal').classList.add('show');
-            document.getElementById('user-info').classList.remove('active');
-            document.getElementById('change-email').value = currentUser.email;
-            document.getElementById('old-password').value = '';
-            document.getElementById('new-password').value = '';
-            document.getElementById('change-email').focus();
-        }
-
-        function closeChangePasswordModal() {
-            if (isLoading) return;
-            document.getElementById('change-password-modal').classList.remove('show');
-            document.getElementById('change-password-form').reset();
-        }
-
-        function setupChangePasswordForm() {
-            const form = document.getElementById('change-password-form');
-            form.addEventListener('submit', async (e) => {
-                e.preventDefault();
-                if (isLoading) return;
-
-                const email = document.getElementById('change-email').value.trim();
-                const oldPassword = document.getElementById('old-password').value.trim();
-                const newPassword = document.getElementById('new-password').value.trim();
-
-                if (!email || !oldPassword || !newPassword) {
-                    showNotification('Please fill in all fields', 'error');
-                    return;
-                }
-
-                if (newPassword.length < 6) {
-                    showNotification('New password must be at least 6 characters', 'error');
-                    return;
-                }
-
-                showLoading();
-                try {
-                    const token = localStorage.getItem('token');
-                    const response = await fetch('/api/auth/change-password', {
-                        method: 'POST',
-                        headers: {
-                            'Authorization': `Bearer ${token}`,
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({
-                            email: email,
-                            old_password: oldPassword,
-                            new_password: newPassword
-                        })
-                    });
-
-                    const data = await response.json();
-
-                    if (response.ok) {
-                        showNotification('Password changed successfully', 'success');
-                        closeChangePasswordModal();
-                    } else {
-                        showNotification(data.error || 'Failed to change password', 'error');
-                    }
-                } catch (error) {
-                    console.error('Change password error:', error);
-                    showNotification(`Network error: ${error.message}`, 'error');
-                } finally {
-                    hideLoading();
-                }
-            });
-        }
-
-        document.addEventListener('keydown', (e) => {
-            if (isLoading) return;
-            if ((e.ctrlKey || e.metaKey) && e.key === 'u') {
-                e.preventDefault();
-                document.getElementById('file-input').click();
-            }
-
-            if (e.key === 'Escape') {
-                const chatInput = document.getElementById('chat-input');
-                if (chatInput === document.activeElement) {
-                    chatInput.blur();
-                    chatInput.value = '';
-                }
-                if (window.innerWidth <= 768) {
-                    const sidebar = document.getElementById('sidebar');
-                    if (sidebar.classList.contains('open')) {
-                        sidebar.classList.remove('open');
-                    }
-                }
-                const userInfo = document.getElementById('user-info');
-                userInfo.classList.remove('active');
-                closeChangePasswordModal();
-            }
-        });
-
-        window.addEventListener('beforeunload', (e) => {
-            const chatInput = document.getElementById('chat-input');
-            if (chatInput && chatInput.value.trim()) {
-                e.preventDefault();
-                e.returnValue = 'You have an unsent message. Are you sure you want to leave?';
-            }
-        });
-
-        document.addEventListener('visibilitychange', () => {
-            const spinner = document.querySelector('.processing-spinner');
-            const dots = document.querySelectorAll('.typing-dot');
-
-            if (document.hidden) {
-                if (spinner) spinner.style.setProperty('animation-play-state', 'paused');
-                dots.forEach(dot => dot.style.setProperty('animation-play-state', 'paused'));
-            } else {
-                if (spinner) spinner.style.setProperty('animation-play-state', 'running');
-                dots.forEach(dot => dot.style.setProperty('animation-play-state', 'running'));
-            }
-        });
-    </script>
+  </div>
+</div>
+
+<!-- Change Password Modal -->
+<div id="change-password-modal" class="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm items-center justify-center p-4 hidden">
+  <div class="bg-surface-container-high w-full max-w-md rounded-3xl p-8 border border-white/10 shadow-2xl">
+    <div class="flex items-center justify-between mb-6">
+      <h3 class="text-xl font-headline font-bold">Change Password</h3>
+      <button onclick="closeChangePasswordModal()" class="w-8 h-8 rounded-lg bg-white/5 hover:bg-white/10 flex items-center justify-center transition-colors">
+        <span class="material-symbols-outlined text-sm">close</span>
+      </button>
+    </div>
+    <div id="change-pw-error" class="hidden mb-4 p-3 rounded-xl bg-error-container/20 text-error text-sm border border-error/20"></div>
+    <div id="change-pw-success" class="hidden mb-4 p-3 rounded-xl bg-green-900/20 text-green-400 text-sm border border-green-800/20"></div>
+    <div class="space-y-4 mb-6">
+      <div>
+        <label class="text-xs font-bold text-tertiary uppercase tracking-widest mb-2 block">Email</label>
+        <input id="change-pw-email" class="w-full bg-surface-container-lowest border border-outline-variant rounded-xl py-3 px-4 text-on-surface focus:ring-2 focus:ring-primary focus:border-primary outline-none" type="email" placeholder="your@email.com"/>
+      </div>
+      <div>
+        <label class="text-xs font-bold text-tertiary uppercase tracking-widest mb-2 block">Old Password</label>
+        <input id="change-pw-old" class="w-full bg-surface-container-lowest border border-outline-variant rounded-xl py-3 px-4 text-on-surface focus:ring-2 focus:ring-primary focus:border-primary outline-none" type="password" placeholder="••••••••"/>
+      </div>
+      <div>
+        <label class="text-xs font-bold text-tertiary uppercase tracking-widest mb-2 block">New Password</label>
+        <input id="change-pw-new" class="w-full bg-surface-container-lowest border border-outline-variant rounded-xl py-3 px-4 text-on-surface focus:ring-2 focus:ring-primary focus:border-primary outline-none" type="password" placeholder="••••••••"/>
+      </div>
+    </div>
+    <div class="flex gap-3">
+      <button onclick="closeChangePasswordModal()" class="flex-1 py-3 px-6 rounded-xl font-bold bg-white/5 hover:bg-white/10 transition-colors">Cancel</button>
+      <button id="change-pw-btn" onclick="submitChangePassword()" class="flex-1 py-3 px-6 rounded-xl font-bold bg-primary-container text-on-primary hover:brightness-110 transition-all shadow-lg">Change Password</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast Notification -->
+<div id="toast-container" class="fixed top-20 right-4 z-[200] space-y-2"></div>
+
+<!-- Background Texture Overlay -->
+<div class="fixed inset-0 -z-10 pointer-events-none opacity-10">
+  <div class="absolute top-0 right-0 w-[600px] h-[600px] bg-primary/10 rounded-full blur-[150px]"></div>
+  <div class="absolute bottom-0 left-0 w-[500px] h-[500px] bg-tertiary/5 rounded-full blur-[120px]"></div>
+</div>
+
+<script>
+// ===== STATE =====
+let currentNoteId = null;
+let currentNoteName = null;
+let notes = [];
+let contextMenuTarget = null;
+let chatHistory = [];
+
+// ===== AUTH CHECK =====
+const token = localStorage.getItem('token');
+if (!token) { window.location.href = '/index'; }
+
+// ===== USER DISPLAY =====
+try {
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  const email = user.email || '';
+  document.getElementById('user-email-display').textContent = email;
+  document.getElementById('dropdown-email').textContent = email;
+} catch(e) {}
+
+// ===== HELPERS =====
+function showToast(message, type = 'success') {
+  const container = document.getElementById('toast-container');
+  const toast = document.createElement('div');
+  const color = type === 'success' ? 'bg-green-900/80 border-green-700/50 text-green-300' : 'bg-error-container/80 border-red-700/50 text-error';
+  toast.className = `toast flex items-center gap-3 px-4 py-3 rounded-xl border shadow-2xl text-sm max-w-xs ${color}`;
+  toast.innerHTML = `<span class="material-symbols-outlined text-sm">${type === 'success' ? 'check_circle' : 'error'}</span><span>${message}</span>`;
+  container.appendChild(toast);
+  setTimeout(() => { toast.style.opacity = '0'; toast.style.transform = 'translateX(100%)'; toast.style.transition = 'all 0.3s'; setTimeout(() => toast.remove(), 300); }, 3500);
+}
+
+function showLoading() {
+  const overlay = document.getElementById('loading-overlay');
+  overlay.classList.remove('hidden');
+  overlay.classList.add('flex');
+}
+
+function hideLoading() {
+  const overlay = document.getElementById('loading-overlay');
+  overlay.classList.add('hidden');
+  overlay.classList.remove('flex');
+}
+
+function apiHeaders() {
+  return { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` };
+}
+
+// ===== LOGOUT =====
+document.getElementById('logout-btn').addEventListener('click', () => {
+  localStorage.removeItem('token');
+  localStorage.removeItem('user');
+  window.location.href = '/index';
+});
+
+// ===== FILE UPLOAD =====
+const uploadArea = document.getElementById('upload-area');
+const fileInput = document.getElementById('file-input');
+
+uploadArea.addEventListener('click', () => fileInput.click());
+uploadArea.addEventListener('dragover', (e) => { e.preventDefault(); uploadArea.classList.add('drag-over'); });
+uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('drag-over'));
+uploadArea.addEventListener('drop', (e) => {
+  e.preventDefault();
+  uploadArea.classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file && file.type === 'application/pdf') uploadFile(file);
+  else showToast('Please upload a PDF file', 'error');
+});
+fileInput.addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (file) uploadFile(file);
+  fileInput.value = '';
+});
+
+async function uploadFile(file) {
+  if (file.size > 5 * 1024 * 1024) { showToast('File size must be less than 5MB', 'error'); return; }
+  showLoading();
+  const formData = new FormData();
+  formData.append('file', file);
+  try {
+    const response = await fetch('/api/upload', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` },
+      body: formData
+    });
+    const data = await response.json();
+    if (response.ok) {
+      showToast('PDF uploaded and processed!', 'success');
+      await loadNotes();
+      if (data.note_id) selectNote(data.note_id, data.note_name || file.name);
+    } else {
+      showToast(data.error || 'Upload failed', 'error');
+    }
+  } catch (e) {
+    showToast('Upload failed. Please try again.', 'error');
+  } finally {
+    hideLoading();
+  }
+}
+
+// ===== LOAD NOTES =====
+async function loadNotes() {
+  try {
+    const response = await fetch('/api/notes', { headers: apiHeaders() });
+    const data = await response.json();
+    if (response.ok) {
+      notes = data.notes || [];
+      renderNotes();
+    }
+  } catch(e) {
+    showToast('Failed to load notes', 'error');
+  }
+}
+
+function renderNotes() {
+  const list = document.getElementById('notes-list');
+  const emptyState = document.getElementById('notes-empty-state');
+  list.innerHTML = '';
+
+  if (!notes.length) {
+    if (emptyState) list.appendChild(emptyState);
+    return;
+  }
+  if (emptyState) emptyState.remove();
+
+  notes.forEach(note => {
+    const item = document.createElement('div');
+    const isActive = currentNoteId === note.id;
+    item.className = `note-item rounded-lg px-3 py-2.5 cursor-pointer flex items-center justify-between group ${isActive ? 'active' : ''}`;
+    item.dataset.id = note.id;
+    item.dataset.name = note.name;
+
+    const dateStr = note.created_at ? new Date(note.created_at).toLocaleDateString('en-US', {month:'short',day:'numeric'}) : '';
+    item.innerHTML = `
+      <div class="flex items-center gap-2 overflow-hidden flex-1">
+        <span class="material-symbols-outlined text-sm text-${isActive ? 'primary' : 'outline'} flex-shrink-0" style="font-variation-settings:'FILL' ${isActive ? '1' : '0'};">book_2</span>
+        <div class="overflow-hidden">
+          <div class="text-sm font-medium truncate text-${isActive ? 'primary' : 'on-surface'} max-w-[150px]">${note.name}</div>
+          <div class="text-[10px] text-slate-500">${dateStr}</div>
+        </div>
+      </div>
+      <button class="more-btn opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-lg hover:bg-white/10 flex-shrink-0" data-id="${note.id}" data-name="${note.name}">
+        <span class="material-symbols-outlined text-slate-400 text-base">more_vert</span>
+      </button>
+    `;
+
+    item.addEventListener('click', (e) => {
+      if (!e.target.closest('.more-btn')) selectNote(note.id, note.name);
+    });
+    item.querySelector('.more-btn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      showContextMenu(e, note.id, note.name);
+    });
+    list.appendChild(item);
+  });
+}
+
+// ===== SELECT NOTE =====
+async function selectNote(noteId, noteName) {
+  currentNoteId = noteId;
+  currentNoteName = noteName;
+  chatHistory = [];
+
+  document.getElementById('empty-state').classList.add('hidden');
+  document.getElementById('note-content').classList.remove('hidden');
+  document.getElementById('current-note-title').textContent = noteName;
+  document.getElementById('chat-messages').innerHTML = '';
+  appendAiMessage('Hello! I\'ve loaded "' + noteName + '". What would you like to know?');
+
+  // Update active note in sidebar
+  document.querySelectorAll('.note-item').forEach(el => {
+    el.classList.toggle('active', el.dataset.id == noteId);
+  });
+
+  // Load summary
+  const summaryContent = document.getElementById('summary-content');
+  const summaryLoading = document.getElementById('summary-loading');
+  summaryContent.innerHTML = '';
+  summaryLoading.classList.remove('hidden');
+  summaryLoading.classList.add('flex');
+
+  try {
+    const response = await fetch(`/api/notes/${noteId}/summary`, { headers: apiHeaders() });
+    const data = await response.json();
+    if (response.ok && data.summary) {
+      summaryContent.innerHTML = `<div class="prose prose-sm prose-invert max-w-none">${data.summary}</div>`;
+    } else {
+      summaryContent.innerHTML = '<p class="text-slate-500 italic">No summary available.</p>';
+    }
+  } catch(e) {
+    summaryContent.innerHTML = '<p class="text-slate-500 italic">Failed to load summary.</p>';
+  } finally {
+    summaryLoading.classList.add('hidden');
+    summaryLoading.classList.remove('flex');
+  }
+
+  // Load chat history
+  try {
+    const histResponse = await fetch(`/api/notes/${noteId}/chat-history`, { headers: apiHeaders() });
+    const histData = await histResponse.json();
+    if (histResponse.ok && histData.history && histData.history.length) {
+      document.getElementById('chat-messages').innerHTML = '';
+      histData.history.forEach(msg => {
+        if (msg.role === 'user') appendUserMessage(msg.content);
+        else appendAiMessage(msg.content);
+      });
+    }
+  } catch(e) {}
+}
+
+// ===== CONTEXT MENU =====
+function showContextMenu(e, noteId, noteName) {
+  contextMenuTarget = { id: noteId, name: noteName };
+  const menu = document.getElementById('context-menu');
+  menu.style.top = e.clientY + 'px';
+  menu.style.left = e.clientX + 'px';
+  menu.classList.remove('hidden');
+}
+
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.context-menu') && !e.target.closest('.more-btn')) {
+    document.getElementById('context-menu').classList.add('hidden');
+  }
+});
+
+document.getElementById('ctx-rename').addEventListener('click', () => {
+  if (contextMenuTarget) openRenameModal(contextMenuTarget.id, contextMenuTarget.name);
+  document.getElementById('context-menu').classList.add('hidden');
+});
+
+document.getElementById('ctx-delete').addEventListener('click', () => {
+  if (contextMenuTarget) deleteNote(contextMenuTarget.id);
+  document.getElementById('context-menu').classList.add('hidden');
+});
+
+document.getElementById('ctx-export').addEventListener('click', () => {
+  if (contextMenuTarget) exportNote(contextMenuTarget.id, contextMenuTarget.name);
+  document.getElementById('context-menu').classList.add('hidden');
+});
+
+// ===== RENAME =====
+let renameNoteId = null;
+
+function openRenameModal(noteId, noteName) {
+  renameNoteId = noteId;
+  document.getElementById('rename-input').value = noteName;
+  const modal = document.getElementById('rename-modal');
+  modal.classList.remove('hidden');
+  modal.classList.add('flex');
+}
+
+function closeRenameModal() {
+  const modal = document.getElementById('rename-modal');
+  modal.classList.add('hidden');
+  modal.classList.remove('flex');
+  renameNoteId = null;
+}
+
+async function confirmRename() {
+  const newName = document.getElementById('rename-input').value.trim();
+  if (!newName || !renameNoteId) return;
+  try {
+    const response = await fetch(`/api/notes/${renameNoteId}/rename`, {
+      method: 'POST',
+      headers: apiHeaders(),
+      body: JSON.stringify({ name: newName })
+    });
+    if (response.ok) {
+      showToast('Note renamed!', 'success');
+      if (currentNoteId == renameNoteId) {
+        currentNoteName = newName;
+        document.getElementById('current-note-title').textContent = newName;
+      }
+      await loadNotes();
+    } else {
+      const data = await response.json();
+      showToast(data.error || 'Failed to rename', 'error');
+    }
+  } catch(e) {
+    showToast('Failed to rename note', 'error');
+  }
+  closeRenameModal();
+}
+
+// ===== DELETE =====
+async function deleteNote(noteId) {
+  if (!confirm('Are you sure you want to delete this note? This action cannot be undone.')) return;
+  showLoading();
+  try {
+    const response = await fetch(`/api/notes/${noteId}`, {
+      method: 'DELETE',
+      headers: apiHeaders()
+    });
+    if (response.ok) {
+      showToast('Note deleted', 'success');
+      if (currentNoteId == noteId) {
+        currentNoteId = null;
+        currentNoteName = null;
+        document.getElementById('empty-state').classList.remove('hidden');
+        document.getElementById('note-content').classList.add('hidden');
+      }
+      await loadNotes();
+    } else {
+      const data = await response.json();
+      showToast(data.error || 'Failed to delete', 'error');
+    }
+  } catch(e) {
+    showToast('Failed to delete note', 'error');
+  } finally {
+    hideLoading();
+  }
+}
+
+// ===== EXPORT NOTE =====
+async function exportNote(noteId, noteName) {
+  showToast('Preparing export...', 'success');
+  try {
+    const response = await fetch(`/api/notes/${noteId}/export`, {
+      method: 'GET',
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (response.ok) {
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${noteName || 'note'}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast('Note exported!', 'success');
+    } else {
+      showToast('Export failed', 'error');
+    }
+  } catch(e) {
+    showToast('Export failed', 'error');
+  }
+}
+
+// ===== CHAT =====
+function appendUserMessage(text) {
+  const messages = document.getElementById('chat-messages');
+  const div = document.createElement('div');
+  div.className = 'flex items-start gap-3 max-w-[88%] ml-auto flex-row-reverse';
+  div.innerHTML = `
+    <div class="w-7 h-7 rounded-lg bg-primary-container flex-shrink-0 flex items-center justify-center mt-1">
+      <span class="material-symbols-outlined text-sm text-on-primary" style="font-variation-settings:'FILL' 1;">person</span>
+    </div>
+    <div class="user-message p-3 text-sm text-on-surface leading-relaxed">${escapeHtml(text)}</div>
+  `;
+  messages.appendChild(div);
+  messages.scrollTop = messages.scrollHeight;
+}
+
+function appendAiMessage(text) {
+  const messages = document.getElementById('chat-messages');
+  const div = document.createElement('div');
+  div.className = 'flex items-start gap-3 max-w-[88%]';
+  div.innerHTML = `
+    <div class="w-7 h-7 rounded-lg bg-surface-container-highest flex-shrink-0 flex items-center justify-center mt-1">
+      <span class="material-symbols-outlined text-sm text-tertiary">smart_toy</span>
+    </div>
+    <div class="ai-message p-3 text-sm text-on-surface leading-relaxed">${text}</div>
+  `;
+  messages.appendChild(div);
+  messages.scrollTop = messages.scrollHeight;
+}
+
+function showTypingIndicator() {
+  const messages = document.getElementById('chat-messages');
+  const div = document.createElement('div');
+  div.id = 'typing-indicator';
+  div.className = 'flex items-start gap-3 max-w-[88%]';
+  div.innerHTML = `
+    <div class="w-7 h-7 rounded-lg bg-surface-container-highest flex-shrink-0 flex items-center justify-center mt-1">
+      <span class="material-symbols-outlined text-sm text-tertiary">smart_toy</span>
+    </div>
+    <div class="ai-message p-3 text-sm text-on-surface">
+      <div class="typing-dots flex gap-1">
+        <span class="w-2 h-2 bg-primary/50 rounded-full inline-block"></span>
+        <span class="w-2 h-2 bg-primary/50 rounded-full inline-block"></span>
+        <span class="w-2 h-2 bg-primary/50 rounded-full inline-block"></span>
+      </div>
+    </div>
+  `;
+  messages.appendChild(div);
+  messages.scrollTop = messages.scrollHeight;
+}
+
+function removeTypingIndicator() {
+  const indicator = document.getElementById('typing-indicator');
+  if (indicator) indicator.remove();
+}
+
+function escapeHtml(text) {
+  return text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
+}
+
+async function sendMessage() {
+  const input = document.getElementById('chat-input');
+  const message = input.value.trim();
+  if (!message || !currentNoteId) {
+    if (!currentNoteId) showToast('Please select a note first', 'error');
+    return;
+  }
+
+  input.value = '';
+  input.style.height = 'auto';
+  appendUserMessage(message);
+  chatHistory.push({ role: 'user', content: message });
+  showTypingIndicator();
+
+  try {
+    const response = await fetch('/api/chat', {
+      method: 'POST',
+      headers: apiHeaders(),
+      body: JSON.stringify({ message, note_id: currentNoteId, history: chatHistory })
+    });
+    const data = await response.json();
+    removeTypingIndicator();
+    if (response.ok) {
+      const reply = data.response || data.reply || 'I could not generate a response.';
+      appendAiMessage(reply);
+      chatHistory.push({ role: 'assistant', content: reply });
+    } else {
+      appendAiMessage(data.error || 'Sorry, I encountered an error. Please try again.');
+    }
+  } catch(e) {
+    removeTypingIndicator();
+    appendAiMessage('Sorry, there was a network error. Please try again.');
+  }
+}
+
+document.getElementById('send-btn').addEventListener('click', sendMessage);
+document.getElementById('chat-input').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+});
+
+// Auto-resize textarea
+document.getElementById('chat-input').addEventListener('input', function() {
+  this.style.height = 'auto';
+  this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+});
+
+// ===== EXPORT CHAT =====
+document.getElementById('export-chat-btn').addEventListener('click', async () => {
+  if (!currentNoteId) { showToast('Select a note first', 'error'); return; }
+  showToast('Preparing chat export...', 'success');
+  try {
+    const response = await fetch(`/api/notes/${currentNoteId}/export-chat`, {
+      method: 'GET',
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (response.ok) {
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${currentNoteName || 'chat'}_chat.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast('Chat exported!', 'success');
+    } else {
+      showToast('Chat export failed', 'error');
+    }
+  } catch(e) {
+    showToast('Chat export failed', 'error');
+  }
+});
+
+// ===== CHANGE PASSWORD =====
+function openChangePasswordModal() {
+  const modal = document.getElementById('change-password-modal');
+  try {
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    document.getElementById('change-pw-email').value = user.email || '';
+  } catch(e) {}
+  modal.classList.remove('hidden');
+  modal.classList.add('flex');
+}
+
+function closeChangePasswordModal() {
+  const modal = document.getElementById('change-password-modal');
+  modal.classList.add('hidden');
+  modal.classList.remove('flex');
+  document.getElementById('change-pw-error').classList.add('hidden');
+  document.getElementById('change-pw-success').classList.add('hidden');
+}
+
+async function submitChangePassword() {
+  const email = document.getElementById('change-pw-email').value;
+  const oldPw = document.getElementById('change-pw-old').value;
+  const newPw = document.getElementById('change-pw-new').value;
+  const btn = document.getElementById('change-pw-btn');
+
+  document.getElementById('change-pw-error').classList.add('hidden');
+  document.getElementById('change-pw-success').classList.add('hidden');
+
+  if (!email || !oldPw || !newPw) {
+    document.getElementById('change-pw-error').textContent = 'All fields are required';
+    document.getElementById('change-pw-error').classList.remove('hidden');
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'Changing...';
+
+  try {
+    const response = await fetch('/api/auth/change-password', {
+      method: 'POST',
+      headers: apiHeaders(),
+      body: JSON.stringify({ email, old_password: oldPw, new_password: newPw })
+    });
+    const data = await response.json();
+    if (response.ok) {
+      document.getElementById('change-pw-success').textContent = 'Password changed successfully!';
+      document.getElementById('change-pw-success').classList.remove('hidden');
+      document.getElementById('change-pw-old').value = '';
+      document.getElementById('change-pw-new').value = '';
+      setTimeout(() => closeChangePasswordModal(), 2000);
+    } else {
+      document.getElementById('change-pw-error').textContent = data.error || 'Failed to change password';
+      document.getElementById('change-pw-error').classList.remove('hidden');
+    }
+  } catch(e) {
+    document.getElementById('change-pw-error').textContent = 'Network error. Please try again.';
+    document.getElementById('change-pw-error').classList.remove('hidden');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Change Password';
+  }
+}
+
+// ===== MOBILE SIDEBAR =====
+document.getElementById('mobile-menu-btn').addEventListener('click', () => {
+  const sidebar = document.getElementById('sidebar');
+  sidebar.classList.toggle('-translate-x-full');
+});
+
+// ===== INIT =====
+loadNotes();
+</script>
 </body>
 </html>
