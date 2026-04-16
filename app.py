@@ -25,7 +25,7 @@ from reportlab.lib.enums import TA_LEFT, TA_JUSTIFY
 from bs4 import BeautifulSoup
 from io import BytesIO
 
-# Configure logiing
+# Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s %(levelname)s: %(message)s',
@@ -33,16 +33,17 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Suppress warnings
+# Suppress specific warnings
 warnings.filterwarnings("ignore", category=DeprecationWarning, module="langchain_pinecone")
 warnings.filterwarnings("ignore", message=".*pydantic.*")
 
+# Initialize Flask app
 app = Flask(__name__)
 app.secret_key = 'your-secret-key-change-this'
 CORS(app)
 load_dotenv()
 
-
+# Environment Variables
 try:
     SUPABASE_URL = os.getenv("SUPABASE_URL")
     SUPABASE_KEY = os.getenv("SUPABASE_KEY")
@@ -177,9 +178,10 @@ class LazyInitializer:
     def get_llm(self):
         if self._llm is None:
             import google.generativeai as genai
+            from langchain_google_genai import GoogleGenerativeAI
             try:
                 genai.configure(api_key=GOOGLE_API_KEY)
-                self._llm = genai.GenerativeModel('gemini-2.5-flash')  # or 'gemini-1.5-pro'
+                self._llm = GoogleGenerativeAI(model='gemini-1.5-flash', google_api_key=GOOGLE_API_KEY)
                 logger.info("Google Generative AI initialized")
             except Exception as e:
                 logger.error(f"Error initializing Google Generative AI: {str(e)}")
@@ -199,7 +201,7 @@ class LazyInitializer:
 #  loader
 lazy_init = LazyInitializer()
 
-# Timeout decorator
+# Timeout decorator for Windows
 def timeout(seconds):
     def decorator(func):
         def _timeout_handler(signum, frame):
@@ -217,17 +219,17 @@ def timeout(seconds):
         return wrapper
     return decorator
 
-# Rate limiting helper  ( timeout )
+# Rate limiting helper with timeout
 @timeout(60)
 def rate_limit_llm(func, *args, max_retries=3, delay=2):
-    import google.generativeai as genai 
+    import google.generativeai as genai
     for attempt in range(max_retries):
         try:
             return func(*args)
-        except genai.types.BlockedPromptException as e:
+        except genai.types.generation_types.BlockedPromptException as e:
             logger.error(f"LLM blocked prompt error: {str(e)}")
             return None
-        except genai.types.ResponseError as e:
+        except genai.types.generation_types.ResponseError as e:
             if "429" in str(e) or "quota" in str(e).lower():
                 if attempt < max_retries - 1:
                     wait_time = delay * (2 ** attempt)
@@ -242,6 +244,7 @@ def rate_limit_llm(func, *args, max_retries=3, delay=2):
                 return None
     return None
 
+# Database initialization
 def init_db():
     try:
         supabase = lazy_init.get_supabase()
@@ -310,8 +313,8 @@ def extract_text_from_pdf(file_content):
         return None
 
 def chunk_text(text, chunk_size=1000, chunk_overlap=200):
+    from langchain.text_splitter import RecursiveCharacterTextSplitter
     try:
-        from langchain_text_splitters import RecursiveCharacterTextSplitter
         text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=chunk_size,
             chunk_overlap=chunk_overlap,
@@ -323,9 +326,6 @@ def chunk_text(text, chunk_size=1000, chunk_overlap=200):
                 yield from text_splitter.split_text(chunk)
         
         return list(stream_chunks())
-    except ImportError as e:
-        logger.error(f"LangChain not installed: {str(e)}")
-        return []  # Fallback: simple chunking
     except ValueError as e:
         logger.error(f"Error chunking text: {str(e)}")
         return []
@@ -429,9 +429,9 @@ def markdown_to_html(text):
 
 @timeout(120)
 def summarize_text(text):
-    import google.generativeai as genai 
+    import google.generativeai as genai
     def generate_summary():
-        model = genai.GenerativeModel('gemini-2.5-flash')
+        model = genai.GenerativeModel('gemini-1.5-flash')
         prompt = f"""
         Create a detailed summary of the following text.
         Include key points, main topics, and important details:
@@ -442,10 +442,10 @@ def summarize_text(text):
             response = model.generate_content(prompt)
             summary = response.text
             return markdown_to_html(summary)
-        except genai.types.BlockedPromptException as e:
+        except genai.types.generation_types.BlockedPromptException as e:
             logger.error(f"Gemini blocked prompt error: {str(e)}")
             return markdown_to_html("Summary unavailable due to content restrictions.")
-        except genai.types.ResponseError as e:
+        except genai.types.generation_types.ResponseError as e:
             logger.error(f"Gemini summary generation failed: {str(e)}")
             return markdown_to_html("Error generating summary: Limit reached or content error.")
     
@@ -951,8 +951,8 @@ def chat():
         final_context = relevant_context if relevant_context else context
         
         def generate_response():
-            import google.generativeai as genai 
-            model = genai.GenerativeModel('gemini-2.5-flash')
+            import google.generativeai as genai
+            model = genai.GenerativeModel('gemini-1.5-flash')
             prompt = f"""
 [SYSTEM INSTRUCTIONS]
 You are an advanced AI tutor and knowledge navigator with expertise in analyzing and explaining complex topics.
@@ -999,9 +999,6 @@ Previous Conversation History: {history_str}
 [USER QUERY]
 {message}
 [FINAL INSTRUCTIONS]
-Handle greting message like (hey , nice ,great,and all other )your response should be like that also 
-If the user query is not related to the uploaded document, politely respond with a clear message such as:
-'Sorry, this query is not valid for the uploaded document. Please ask something relevant to the document content.
 Generate a **detailed, structured, and well-formatted response** to the user’s query.
 **MANDATORILY use `backticks` to highlight every key term, technical concept, or important word throughout the response**.
 Ensure the response is **professional, clear, and suitable for inclusion in a PDF document**.
@@ -1009,10 +1006,10 @@ Ensure the response is **professional, clear, and suitable for inclusion in a PD
             try:
                 response = model.generate_content(prompt)
                 return markdown_to_html(response.text)
-            except genai.types.BlockedPromptException as e:
+            except genai.types.generation_types.BlockedPromptException as e:
                 logger.error(f"Gemini blocked prompt error: {str(e)}")
                 return markdown_to_html("Sorry, the query was blocked due to content restrictions.")
-            except genai.types.ResponseError as e:
+            except genai.types.generation_types.ResponseError as e:
                 logger.error(f"Gemini response generation failed: {str(e)}")
                 return markdown_to_html("Error generating response: Limit reached or content error.")
         
@@ -1422,14 +1419,3 @@ def export_note_to_pdf(note_id):
 if __name__ == '__main__':
     init_db()
     app.run(debug=True)
-
-
-
-
-
-
-
-
-
-
-
