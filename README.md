@@ -364,32 +364,4 @@ python app.py
 ## 📄 License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
-
-## 🙏 Acknowledgments
-
-- **Google Gemini** for AI capabilities
-- **Supabase** for database infrastructure  
-- **Cloudinary** for file storage
-- **LangChain** for AI orchestration
-- **D3.js** for mind map visualizations
-- **Flask** for web framework
-
----
-
-**Built with ❤️ for students and researchers worldwide.**
-
-## 📞 Support
-
-For support and questions:
-- **Create an issue** in the repository
-- **Check documentation** for setup guides
-- **Review troubleshooting** section above
-- **Test with sample files** to verify setup
-
-### **Quick Test**
-1. Upload a small PDF file
-2. Verify summary generation
-3. Test chat functionality
-4. Check mind map visualization
-
-Your Smart Academic Notes Generator is ready to transform learning! 🎓
+
