@@ -21,6 +21,8 @@ CREATE TABLE notes (
     mindmap JSONB,
     file_url VARCHAR(500),
     file_type VARCHAR(50) CHECK (file_type IN ('pdf', 'audio')),
+    deleted BOOLEAN DEFAULT FALSE,
+    pinecone_namespace VARCHAR(255),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
