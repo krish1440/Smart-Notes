@@ -181,7 +181,7 @@ class LazyInitializer:
             from langchain_google_genai import GoogleGenerativeAI
             try:
                 genai.configure(api_key=GOOGLE_API_KEY)
-                self._llm = GoogleGenerativeAI(model='gemini-1.5-flash', google_api_key=GOOGLE_API_KEY)
+                self._llm = GoogleGenerativeAI(model='gemini-2.5-flash', google_api_key=GOOGLE_API_KEY)
                 logger.info("Google Generative AI initialized")
             except Exception as e:
                 logger.error(f"Error initializing Google Generative AI: {str(e)}")
@@ -226,11 +226,11 @@ def rate_limit_llm(func, *args, max_retries=3, delay=2):
     for attempt in range(max_retries):
         try:
             return func(*args)
-        except genai.types.generation_types.BlockedPromptException as e:
+        except genai.types.BlockedPromptException as e:
             logger.error(f"LLM blocked prompt error: {str(e)}")
             return None
-        except genai.types.generation_types.ResponseError as e:
-            if "429" in str(e) or "quota" in str(e).lower():
+        except Exception as e:
+            if "429" in str(e) or "quota" in str(e).lower() or "ResourceExhausted" in str(e):
                 if attempt < max_retries - 1:
                     wait_time = delay * (2 ** attempt)
                     logger.warning(f"LLM rate limit hit. Waiting {wait_time} seconds before retry {attempt + 1}/{max_retries}")
@@ -240,7 +240,7 @@ def rate_limit_llm(func, *args, max_retries=3, delay=2):
                     logger.error(f"Max retries reached. LLM operation failed: {str(e)}")
                     return None
             else:
-                logger.error(f"Non-rate-limit LLM error: {str(e)}")
+                logger.error(f"LLM error: {str(e)}")
                 return None
     return None
 
@@ -313,7 +313,7 @@ def extract_text_from_pdf(file_content):
         return None
 
 def chunk_text(text, chunk_size=1000, chunk_overlap=200):
-    from langchain.text_splitter import RecursiveCharacterTextSplitter
+    from langchain_text_splitters import RecursiveCharacterTextSplitter
     try:
         text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=chunk_size,
@@ -431,7 +431,7 @@ def markdown_to_html(text):
 def summarize_text(text):
     import google.generativeai as genai
     def generate_summary():
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        model = genai.GenerativeModel('gemini-2.5-flash')
         prompt = f"""
         Create a detailed summary of the following text.
         Include key points, main topics, and important details:
@@ -442,11 +442,13 @@ def summarize_text(text):
             response = model.generate_content(prompt)
             summary = response.text
             return markdown_to_html(summary)
-        except genai.types.generation_types.BlockedPromptException as e:
+        except genai.types.BlockedPromptException as e:
             logger.error(f"Gemini blocked prompt error: {str(e)}")
             return markdown_to_html("Summary unavailable due to content restrictions.")
-        except genai.types.generation_types.ResponseError as e:
-            logger.error(f"Gemini summary generation failed: {str(e)}")
+        except Exception as e:
+            logger.error(f"Gemini summary generation failed with error: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())
             return markdown_to_html("Error generating summary: Limit reached or content error.")
     
     return rate_limit_llm(generate_summary) or "Error generating summary"
@@ -455,8 +457,11 @@ def summarize_text(text):
 def upload_to_cloudinary(file_content, resource_type, folder):
     cloudinary = lazy_init.get_cloudinary()
     try:
+        cloudinary = lazy_init.get_cloudinary()
+        # Use BytesIO to handle bytes as a stream for Cloudinary
+        file_stream = BytesIO(file_content)
         upload_result = cloudinary.uploader.upload(
-            file_content,
+            file_stream,
             resource_type=resource_type,
             folder=folder
         )
@@ -465,16 +470,15 @@ def upload_to_cloudinary(file_content, resource_type, folder):
         logger.error(f"Cloudinary error: {str(e)}")
         raise
 
-# Retry decorator for Supabase queries
 @retry(httpx.ConnectError, tries=3, delay=1, backoff=2)
 def check_pdf_count(user_id, twenty_four_hours_ago):
     supabase = lazy_init.get_supabase()
-    return supabase.table('notes').select('count').eq('user_id', user_id).eq('file_type', 'pdf').gte('created_at', twenty_four_hours_ago.isoformat()).execute()
+    return supabase.table('notes').select('*', count='exact').eq('user_id', user_id).eq('file_type', 'pdf').eq('deleted', False).gte('created_at', twenty_four_hours_ago.isoformat()).execute()
 
 @retry(httpx.ConnectError, tries=3, delay=1, backoff=2)
 def check_chat_count(user_id, twenty_four_hours_ago):
     supabase = lazy_init.get_supabase()
-    return supabase.table('chats').select('count').eq('user_id', user_id).gte('created_at', twenty_four_hours_ago.isoformat()).execute()
+    return supabase.table('chats').select('*', count='exact').eq('user_id', user_id).gte('created_at', twenty_four_hours_ago.isoformat()).execute()
 
 # Routes
 @app.route('/')
@@ -667,11 +671,12 @@ def login():
         logger.error(f"Unexpected error during login: {str(e)}")
         return jsonify({'error': f'Unexpected error: {str(e)}'}), 500
 
-@app.route('/api/upload/pdf', methods=['POST'])
+@app.route('/api/upload', methods=['POST'])
 @require_auth
 def upload_pdf():
     try:
-        logger.info(f"Starting PDF upload for user {request.current_user['user_id']}")
+        user_id = request.current_user['user_id']
+        logger.info(f"Starting PDF upload for user {user_id}. File: {request.files.get('file').filename if 'file' in request.files else 'None'}")
         
         if 'file' not in request.files:
             logger.warning("No file part in request")
@@ -690,7 +695,7 @@ def upload_pdf():
         reset_time_str = reset_time.strftime("%d/%m/%Y %H:%M")
         try:
             count_result = check_pdf_count(user_id, twenty_four_hours_ago)
-            pdf_count = count_result.data[0]['count'] if count_result.data else 0
+            pdf_count = count_result.count if count_result.count is not None else 0
             logger.info(f"User {user_id} has uploaded {pdf_count} PDFs in the last 24 hours")
             if pdf_count >= 5:
                 logger.warning(f"User {user_id} exceeded daily PDF upload limit")
@@ -800,6 +805,7 @@ def upload_pdf():
         return jsonify({
             'message': 'PDF processed successfully',
             'note_id': note_id,
+            'note_title': file.filename,
             'summary': summary,
             'vector_store_created': success
         }), 200
@@ -887,7 +893,7 @@ def chat():
         reset_time_str = reset_time.strftime("%d/%m/%Y %H:%M")
         try:
             count_result = check_chat_count(user_id, twenty_four_hours_ago)
-            chat_count = count_result.data[0]['count'] if count_result.data else 0
+            chat_count = count_result.count if count_result.count is not None else 0
             logger.info(f"User {user_id} has {chat_count} chats in the last 24 hours")
             if chat_count >= 20:
                 logger.warning(f"User {user_id} exceeded daily chat limit")
@@ -952,7 +958,7 @@ def chat():
         
         def generate_response():
             import google.generativeai as genai
-            model = genai.GenerativeModel('gemini-1.5-flash')
+            model = genai.GenerativeModel('gemini-2.5-flash')
             prompt = f"""
 [SYSTEM INSTRUCTIONS]
 You are an advanced AI tutor and knowledge navigator with expertise in analyzing and explaining complex topics.
@@ -1006,10 +1012,10 @@ Ensure the response is **professional, clear, and suitable for inclusion in a PD
             try:
                 response = model.generate_content(prompt)
                 return markdown_to_html(response.text)
-            except genai.types.generation_types.BlockedPromptException as e:
+            except genai.types.BlockedPromptException as e:
                 logger.error(f"Gemini blocked prompt error: {str(e)}")
                 return markdown_to_html("Sorry, the query was blocked due to content restrictions.")
-            except genai.types.generation_types.ResponseError as e:
+            except Exception as e:
                 logger.error(f"Gemini response generation failed: {str(e)}")
                 return markdown_to_html("Error generating response: Limit reached or content error.")
         
@@ -1067,13 +1073,13 @@ def get_notes():
         logger.error(f"Unexpected error during notes retrieval: {str(e)}")
         return jsonify({'error': f'Unexpected error: {str(e)}'}), 500
 
-@app.route('/api/notes/<note_id>/rename', methods=['PUT'])
+@app.route('/api/notes/<note_id>/rename', methods=['POST', 'PUT'])
 @require_auth
 def rename_note(note_id):
     try:
         user_id = request.current_user['user_id']
         data = request.json
-        new_title = data.get('title')
+        new_title = data.get('title') or data.get('name')
         
         if not new_title:
             logger.warning("Missing new title in rename request")
@@ -1107,7 +1113,7 @@ def rename_note(note_id):
         logger.error(f"Unexpected error during note rename: {str(e)}")
         return jsonify({'error': f'Unexpected error: {str(e)}'}), 500
 
-@app.route('/api/chat/history/<note_id>', methods=['GET'])
+@app.route('/api/notes/<note_id>/chat-history', methods=['GET'])
 @require_auth
 def get_chat_history(note_id):
     try:
@@ -1131,11 +1137,15 @@ def get_chat_history(note_id):
                 .eq('note_id', note_id) \
                 .order('created_at', desc=False) \
                 .execute()
-            chats = result.data if result.data else []
-            for chat in chats:
-                chat['ai_response'] = chat.get('ai_response', '')
-            logger.info(f"Retrieved {len(chats)} chat messages for user {user_id}, note {note_id}")
-            return jsonify({"chats": chats}), 200
+            
+            raw_chats = result.data if result.data else []
+            history = []
+            for chat in raw_chats:
+                history.append({'role': 'user', 'content': chat['user_message']})
+                history.append({'role': 'assistant', 'content': chat['ai_response']})
+                
+            logger.info(f"Retrieved {len(history)} chat messages for user {user_id}, note {note_id}")
+            return jsonify({"history": history}), 200
         except postgrest.exceptions.APIError as e:
             logger.error(f"Supabase API error retrieving chat history: {str(e)}")
             return jsonify({'error': f'Failed to fetch chat history: {str(e)}'}), 500
@@ -1144,6 +1154,24 @@ def get_chat_history(note_id):
             return jsonify({'error': f'Failed to connect to database: {str(e)}'}), 503
     except Exception as e:
         logger.error(f"Unexpected error during chat history retrieval: {str(e)}")
+        return jsonify({'error': f'Unexpected error: {str(e)}'}), 500
+
+@app.route('/api/notes/<note_id>/summary', methods=['GET'])
+@require_auth
+def get_summary(note_id):
+    try:
+        user_id = request.current_user['user_id']
+        supabase = lazy_init.get_supabase()
+        try:
+            result = supabase.table('notes').select("summary").eq('id', note_id).eq('user_id', user_id).eq('deleted', False).execute()
+            if not result.data:
+                return jsonify({'error': 'Note not found'}), 404
+            return jsonify({'summary': result.data[0]['summary']}), 200
+        except postgrest.exceptions.APIError as e:
+            logger.error(f"Supabase API error retrieving summary: {str(e)}")
+            return jsonify({'error': f'Failed to retrieve summary: {str(e)}'}), 500
+    except Exception as e:
+        logger.error(f"Unexpected error during summary retrieval: {str(e)}")
         return jsonify({'error': f'Unexpected error: {str(e)}'}), 500
 
 @app.route('/api/auth/change-password', methods=['POST'])
