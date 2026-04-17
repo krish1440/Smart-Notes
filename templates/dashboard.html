@@ -8,7 +8,7 @@
 <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Manrope:wght@500;700;800&display=swap" rel="stylesheet"/>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
-<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script src="https://cdn.tailwindcss.com?plugins=forms,typography,container-queries"></script>
 <script id="tailwind-config">
   tailwind.config = {
     darkMode: "class",
@@ -97,6 +97,25 @@
   @keyframes blink { 0%, 80%, 100% { opacity: 0; } 40% { opacity: 1; } }
   #upload-area { border: 2px dashed rgba(113,137,246,0.3); transition: all 0.3s ease; }
   #upload-area:hover, #upload-area.drag-over { border-color: #7189f6; background: rgba(113,137,246,0.05); }
+  
+  /* Advanced AI Message Styling */
+  .ai-message code {
+    background-color: rgba(113, 137, 246, 0.15) !important;
+    color: #b9c3ff !important;
+    padding: 0.2rem 0.4rem !important;
+    border-radius: 0.375rem !important;
+    font-weight: 500 !important;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace !important;
+    border: 1px solid rgba(113, 137, 246, 0.2) !important;
+  }
+  .ai-message p { margin-bottom: 0.75rem; }
+  .ai-message ul, .ai-message ol { margin-left: 1.25rem; margin-bottom: 0.75rem; list-style-type: unset; }
+  .ai-message li { margin-bottom: 0.25rem; }
+  .ai-message strong { color: #e3e0f8; font-weight: 600; }
+  .ai-message h1, .ai-message h2, .ai-message h3 { color: #b9c3ff; font-weight: 700; margin-top: 1rem; margin-bottom: 0.5rem; }
+  .ai-message table { border-collapse: collapse; width: 100%; margin: 1rem 0; border: 1px solid rgba(255,255,255,0.1); }
+  .ai-message th, .ai-message td { border: 1px solid rgba(255,255,255,0.1); padding: 0.5rem; text-align: left; }
+  .ai-message th { background: rgba(255,255,255,0.05); }
   .toast { animation: slideIn 0.3s ease; }
   @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
 </style>
@@ -254,7 +273,7 @@
               <div class="w-7 h-7 rounded-lg bg-surface-container-highest flex-shrink-0 flex items-center justify-center mt-1">
                 <span class="material-symbols-outlined text-sm text-tertiary">smart_toy</span>
               </div>
-              <div class="ai-message p-3 text-sm text-on-surface leading-relaxed">
+              <div class="ai-message p-3 text-sm text-on-surface leading-relaxed prose prose-invert max-w-none">
                 Hello! I'm your AI assistant. Select a note and I'll help you explore, understand, and analyze its content.
               </div>
             </div>
@@ -714,7 +733,7 @@ function appendAiMessage(text) {
     <div class="w-7 h-7 rounded-lg bg-surface-container-highest flex-shrink-0 flex items-center justify-center mt-1">
       <span class="material-symbols-outlined text-sm text-tertiary">smart_toy</span>
     </div>
-    <div class="ai-message p-3 text-sm text-on-surface leading-relaxed">${text}</div>
+    <div class="ai-message p-3 text-sm text-on-surface leading-relaxed prose prose-invert max-w-none">${text}</div>
   `;
   messages.appendChild(div);
   messages.scrollTop = messages.scrollHeight;
