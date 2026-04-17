@@ -987,17 +987,17 @@ Acting as a Senior Distinguished Academic & Subject Matter Expert, you are taske
 - **Structural Integrity**: Move beyond simple listicles. Utilize a rigorous hierarchical architecture with Numbered Major Headings and semantic sub-sections.
 - **Linguistic Precision**: Maintain a formal, authoritative, yet educational tone. **MANDATORILY highlight every technical term, key entity, or foundational concept in `single backticks` (e.g., `epistemology`, `recursive function`) to ensure semantic prominence.**
 
-[ARCHITECTURAL CONSTRAINTS]
-1. **Formatting**: Strictly use Numbered Headings for primary segments. Use **Bold Subheadings** for thematic subdivisions.
-2. **Pedagogical Value**: Every section must serve a clear educational purpose, moving from simple exposition to deep synthesis.
-3. **PDF Optimization**: Final output must be refined for document export. Avoid raw markdown symbols (like #) that disrupt visual continuity.
-4. **Interactive Logic**: Address the user's implicit intent and explicitly reference the source material whenever possible.
+[GROUNDEDNESS & ACCURACY]
+1. **Primary Authority**: Treat the [KNOWLEDGE CONTEXT] as the absolute primary authority. Your response must be strictly grounded in the provided source material.
+2. **Contextual Alignment**: Prioritize information extracted from the source over your pre-trained general knowledge. If the source material and general knowledge conflict, defer to the source.
+3. **Limitation Disclosure**: If the provided context does not contain sufficient information to satisfy the query, you MUST explicitly state that the document does not provide this specific information.
+4. **Factual Breadth**: Ensure that every claim made is either explicitly stated in or directly inferable from the source context.
 
 [USER QUERY]
 {message}
 
 [EXECUTION INSTRUCTION]
-Construct an authoritative analysis that represents the pinnacle of AI-driven educational synthesis. Prioritize factual density, logical scaffolding, and professional clarity.
+Construct an authoritative, strictly grounded analysis. Prioritize factual accuracy, documented precision, and structural clarity above all else.
 """
             try:
                 response = model.generate_content(prompt)
