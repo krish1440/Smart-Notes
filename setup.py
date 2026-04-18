@@ -1,6 +1,19 @@
-#!/usr/bin/env python3
 """
-Setup script for Smart Academic Notes Generator
+Smart Academic Notes - Infrastructure Setup & Verification Engine
+
+This utility script automates the environment initialization for the Smart Academic Notes
+Generator. It performs dependency validation, environment variable configuration,
+directory structure creation, and service availability checks to ensure a seamless
+onboarding experience for developers.
+
+Functions:
+    check_python_version: Validates the runtime environment.
+    install_requirements: Handles dependency resolution.
+    create_env_file: Initializes local configuration.
+    download_nltk_data: Fetches NLP resources.
+    check_services: Validates API integrations.
+    create_project_structure: Bootstraps local storage.
+    test_imports: Verifies package integrity.
 """
 
 import os
@@ -9,7 +22,15 @@ import subprocess
 
 
 def check_python_version():
-    """Check if Python version is 3.8 or higher"""
+    """
+    Verifies that the current Python interpreter meets the minimum version requirements.
+
+    Smart Academic Notes requires Python 3.8+ to leverage modern async features
+    and type hinting capabilities.
+
+    Raises:
+        SystemExit: If the Python version is below the 3.8 threshold.
+    """
     if sys.version_info < (3, 8):
         print("❌ Python 3.8 or higher is required")
         print(f"Current version: {sys.version}")
@@ -18,7 +39,12 @@ def check_python_version():
 
 
 def install_requirements():
-    """Install Python requirements"""
+    """
+    Automates the installation of project dependencies via pip.
+
+    Iterates through the requirements.txt file and ensures all necessary
+    libraries for AI processing, database interaction, and PDF generation are present.
+    """
     print("📦 Installing Python requirements...")
     try:
         subprocess.check_call(
@@ -31,7 +57,13 @@ def install_requirements():
 
 
 def create_env_file():
-    """Create .env file if it doesn't exist"""
+    """
+    Initializes the local environment configuration file (.env).
+
+    If a .env file does not exist, this function clones the .env.example template
+    or creates a default one with placeholders for essential API keys (Supabase, 
+    Google Gemini, Cloudinary, etc.).
+    """
     if not os.path.exists(".env"):
         print("📝 Creating .env file...")
 
@@ -72,7 +104,12 @@ FLASK_DEBUG=True
 
 
 def download_nltk_data():
-    """Download required NLTK data"""
+    """
+    Downloads essential Natural Language Toolkit (NLTK) corpora and models.
+
+    Specifically fetches tokenizers and stopword lists required for the 
+    semantic chunking and analysis engine.
+    """
     print("📚 Downloading NLTK data...")
     try:
         import nltk
@@ -85,7 +122,16 @@ def download_nltk_data():
 
 
 def check_services():
-    """Check if required services are configured"""
+    """
+    Validates the presence and validity of integrated third-party services.
+
+    Performs a verification check on Supabase, Google Gemini, and Cloudinary 
+    credentials found in the environment variables to pre-emptively identify 
+    configuration gaps.
+
+    Returns:
+        bool: True if all core services are detected as configured, False otherwise.
+    """
     print("\n🔍 Checking service configurations...")
 
     from dotenv import load_dotenv
@@ -129,7 +175,12 @@ def check_services():
 
 
 def create_project_structure():
-    """Create necessary project directories"""
+    """
+    Ensures the necessary directory hierarchy exists on the local filesystem.
+
+    Strips out local storage paths for PDFs, audio chunks, and logs to prevent 
+    IOErrors during runtime processing.
+    """
     directories = ["storage", "storage/pdfs", "storage/audio", "logs"]
 
     for directory in directories:
@@ -139,7 +190,15 @@ def create_project_structure():
 
 
 def test_imports():
-    """Test if all required packages can be imported"""
+    """
+    Performs a smoke test by attempting to import all critical project dependencies.
+
+    This ensures that the virtual environment is correctly configured and all 
+    native extensions (like PyMuPDF or FAISS) are functional on the current OS.
+
+    Returns:
+        bool: True if all imports pass, False if any critical dependency is missing.
+    """
     print("\n🧪 Testing package imports...")
 
     required_packages = [
