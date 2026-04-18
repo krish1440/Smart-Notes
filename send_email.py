@@ -1,3 +1,15 @@
+"""
+Smart Academic Notes - Email Distribution Engine
+
+This module handles the bulk distribution of Magic Link authentication emails to users
+stored in the Supabase Auth system. It includes robust error handling, pagination,
+and rate-limiting logic to ensure reliable delivery across large user bases.
+
+Attributes:
+    SUPABASE_URL (str): The endpoint URL for the Supabase project.
+    SUPABASE_SERVICE_ROLE_KEY (str): Administrative key for authentication bypass.
+"""
+
 import os
 import time
 from dotenv import load_dotenv
@@ -18,8 +30,16 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
 def send_magic_link_emails_to_all_users():
     """
-    Fetches all users from Supabase Auth and sends Magic Link emails using the predefined template.
-    Handles pagination and rate limiting.
+    Orchestrates the process of fetching all registered users and dispatching Magic Links.
+
+    This function performs the following steps:
+    1. Paginated retrieval of all users from Supabase Auth Admin API.
+    2. Iterative dispatch of One-Time Password (OTP) Magic Links.
+    3. Implementation of execution delays to stay within API rate limits.
+    4. Comprehensive logging of success and failure metrics.
+
+    Raises:
+        Exception: If the initial user fetch or network connectivity fails.
     """
     try:
         # Fetch users with pagination
