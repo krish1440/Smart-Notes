@@ -15,6 +15,7 @@ if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
 # Initialize Supabase client
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
+
 def send_magic_link_emails_to_all_users():
     """
     Fetches all users from Supabase Auth and sends Magic Link emails using the predefined template.
@@ -48,12 +49,14 @@ def send_magic_link_emails_to_all_users():
 
             try:
                 # Send Magic Link email using sign_in_with_otp
-                response = supabase.auth.sign_in_with_otp({
-                    "email": email,
-                    "options": {
-                        "email_redirect_to": "https://smart-notes-xu33.onrender.com/"  # Customize redirect URL
+                response = supabase.auth.sign_in_with_otp(
+                    {
+                        "email": email,
+                        "options": {
+                            "email_redirect_to": "https://smart-notes-xu33.onrender.com/"  # Customize redirect URL
+                        },
                     }
-                })
+                )
                 print(f"Magic Link email sent successfully to {email}")
                 success_count += 1
                 time.sleep(0.5)  # Rate limiting to avoid hitting Supabase limits
@@ -61,10 +64,13 @@ def send_magic_link_emails_to_all_users():
                 print(f"Error sending Magic Link to {email}: {str(e)}")
                 error_count += 1
 
-        print(f"\nSummary: {success_count} emails sent successfully, {error_count} failed.")
+        print(
+            f"\nSummary: {success_count} emails sent successfully, {error_count} failed."
+        )
 
     except Exception as e:
         print(f"Error fetching users: {str(e)}")
+
 
 if __name__ == "__main__":
     send_magic_link_emails_to_all_users()
