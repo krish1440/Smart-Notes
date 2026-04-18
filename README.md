@@ -1,8 +1,19 @@
 # 📚 Smart Academic Notes Generator
 
-An AI-powered web application that automatically generates summarized notes, mind maps, and interactive Q&A chatbots from lecture recordings, PDFs, and academic documents.
+> **The Elite AI Engine for Academic Synthesis.**
+> Transform complex PDFs and lecture notes into structured knowledge in seconds.
 
-## ✨ Features
+---
+
+## 📖 Advanced Documentation
+For deep technical insights and developer-focused guides, please refer to:
+- [🏗️ System Architecture](./ARCHITECTURE.md) - RAG Pipeline & Data Flow.
+- [📡 API Reference Manual](./API_REFERENCE.md) - REST Endpoints & Authentication.
+- [📝 Developer Setup](./setup.py) - Environment Initialization Script.
+
+---
+
+## ✨ Enterprise Features
 
 ### 🟢 Free Tier
 - Upload PDFs & audio files (up to 5MB)
