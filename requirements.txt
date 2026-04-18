@@ -17,3 +17,5 @@ reportlab
 beautifulsoup4
 markdown
 gunicorn
+ruff
+black
