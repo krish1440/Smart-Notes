@@ -107,3 +107,6 @@ coverage.xml
 dmypy.json
 m o d e r n - s m a r t - n o t e s /  
 scratch/
+
+# ===== Ruff =====
+.ruff_cache/
