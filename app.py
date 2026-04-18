@@ -1,3 +1,25 @@
+"""
+Smart Academic Notes - AI-Powered Knowledge Synthesis Platform
+
+This is the core application logic for the Smart Academic Notes platform. 
+It integrates state-of-the-art Natural Language Processing (NLP) models, 
+vector databases, and cloud storage to transform academic PDFs and lecture notes 
+into high-density, searchable knowledge bases.
+
+Key Features:
+    - PDF Text Extraction & Semantic Chunking (using PyMuPDF & LangChain)
+    - Vector Embedding Generation (via Hugging Face Inference API)
+    - Semantic Search & RAG-based Querying (using Pinecone Vector Database)
+    - Multimodal AI Summarization (powered by Google Gemini 2.5 Flash)
+    - Administrative Dashboards & JWT-based Authentication (Supabase Auth)
+    - Automated PDF Generation for summarized findings (ReportLab)
+
+Architecture Overview:
+    The application follows a standard Flask backend pattern with heavy usage
+    of deferred initializations (Lazy Loading) for AI services to optimize 
+    startup latency and memory footprint.
+"""
+
 import os
 from typing import List
 from dotenv import load_dotenv
@@ -87,6 +109,14 @@ except Exception as e:
 
 # Lazy Initializer for services
 class LazyInitializer:
+    """
+    Singleton-style manager for deferred service initializations.
+
+    This class handles the 'lazy' creation of Supabase, Pinecone, Cloudinary,
+    and Generative AI clients. This ensures that the Flask application can boot
+    instantly and only allocates heavy AI resources when an actual request 
+    requires them.
+    """
     def __init__(self):
         self._supabase = None
         self._pinecone_client = None
@@ -262,6 +292,21 @@ def timeout(seconds):
 # Rate limiting helper with timeout
 @timeout(60)
 def rate_limit_llm(func, *args, max_retries=3, delay=2):
+    """
+    Wrapper for LLM calls to handle API rate limits and quotas gracefully.
+
+    Implements exponential backoff when a 429 (ResourceExhausted) error is
+    encountered from the Google Gemini API.
+
+    Args:
+        func (callable): The AI generation function to execute.
+        *args: Variable arguments for the target function.
+        max_retries (int): Maximum attempts before failing.
+        delay (int): Initial delay between retries in seconds.
+
+    Returns:
+        The result of the target function, or None if all attempts fail.
+    """
     import google.generativeai as genai
 
     for attempt in range(max_retries):
@@ -353,6 +398,18 @@ def require_auth(f):
 
 @timeout(60)
 def extract_text_from_pdf(file_content):
+    """
+    Extracts raw text content from a binary PDF stream using PyMuPDF.
+
+    Performs cleansing of the extracted text (e.g., removing null characters)
+    to ensure compatibility with downstream embedding and LLM processors.
+
+    Args:
+        file_content (bytes): The raw binary content of the PDF file.
+
+    Returns:
+        str: The extracted text, or None if extraction fails.
+    """
     try:
         doc = fitz.open(stream=file_content, filetype="pdf")
         text = ""
@@ -389,6 +446,22 @@ def chunk_text(text, chunk_size=1000, chunk_overlap=200):
 
 @timeout(60)
 def create_pinecone_vectors(chunks, note_id, user_id, batch_size=5):
+    """
+    Transforms text chunks into vector embeddings and indexes them in Pinecone.
+
+    This function utilizes the Hugging Face Inference API for high-speed
+    embedding generation and performs bulk upserts into a dedicated namespace
+    for each user/note combination to enable isolated and secure retrieval.
+
+    Args:
+        chunks (List[str]): List of text segments to index.
+        note_id (str): The unique identifier for the parent note.
+        user_id (str): The identifier for the owning user.
+        batch_size (int): Number of vectors to upsert per API call.
+
+    Returns:
+        tuple (bool, str): (Success status, the namespace created)
+    """
     pinecone_index = lazy_init.get_pinecone_index()
     hf_embeddings = lazy_init.get_hf_embeddings()
     try:
@@ -496,6 +569,19 @@ def markdown_to_html(text):
 
 @timeout(120)
 def summarize_text(text):
+    """
+    Generates a high-density executive summary using Google Gemini 2.5 Flash.
+
+    Utilizes a structured identity-based prompt to extract critical data points,
+    thematic architectures, and semantic highlights. The output is formatted
+    in professional Markdown ready for PDF conversion.
+
+    Args:
+        text (str): The raw source text to summarize.
+
+    Returns:
+        str: HTML-formatted summary, or error message if generation fails.
+    """
     import google.generativeai as genai
 
     def generate_summary():
@@ -600,6 +686,12 @@ def dashboard():
 
 @app.route("/api/auth/signup", methods=["POST"])
 def signup():
+    """
+    Endpoint for user registration and identity initiation.
+
+    Performs duplicate detection, triggers Supabase's OTP email process, 
+    and establishes a temporary session for verification.
+    """
     try:
         data = request.json
         email = data.get("email")
@@ -755,6 +847,12 @@ def verify_otp():
 
 @app.route("/api/auth/login", methods=["POST"])
 def login():
+    """
+    Authenticates users and issues high-entropy JWT tokens for session management.
+
+    Uses Supabase as the identity provider and validates credentials against
+    the secondary 'users' table for extended profile data.
+    """
     try:
         data = request.json
         email = data.get("email")
@@ -813,6 +911,17 @@ def login():
 @app.route("/api/upload", methods=["POST"])
 @require_auth
 def upload_pdf():
+    """
+    Main ingestion pipeline for processing research PDFs.
+
+    Workflow:
+    1. Enforcement of daily upload quotas and file size limits.
+    2. Permanent storage of raw PDF on Cloudinary.
+    3. PyMuPDF-based text extraction.
+    4. AI-driven content summarization.
+    5. Vector indexing in Pinecone for RAG-based search.
+    6. Persistence of metadata in Supabase DB.
+    """
     try:
         user_id = request.current_user["user_id"]
         logger.info(
@@ -1786,5 +1895,11 @@ def export_note_to_pdf(note_id):
 
 
 if __name__ == "__main__":
+    """
+    Application Entry Point.
+
+    Triggers the preliminary database check and launches the Flask
+    development server with live-reloading enabled.
+    """
     init_db()
     app.run(debug=True)
