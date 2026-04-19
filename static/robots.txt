@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+Allow: /index
+Allow: /home
+Disallow: /dashboard
+Disallow: /api/
+
+Sitemap: https://smartnotes.example.com/sitemap.xml
