@@ -26,7 +26,7 @@ from dotenv import load_dotenv
 import jwt
 from datetime import datetime, timedelta, timezone
 from functools import wraps
-from flask import Flask, Response, render_template, request, jsonify, session
+from flask import Flask, Response, render_template, request, jsonify, session, send_from_directory
 from flask_cors import CORS
 import logging
 from threading import Timer
@@ -1892,6 +1892,31 @@ def export_note_to_pdf(note_id):
     except Exception as e:
         logger.error(f"Unexpected error during PDF export: {str(e)}")
         return jsonify({"error": f"Unexpected error: {str(e)}"}), 500
+
+
+# SEO Routes
+@app.route("/robots.txt")
+def robots_txt():
+    """Serves robots.txt from the static directory to the site root."""
+    return send_from_directory(app.static_folder, "robots.txt")
+
+
+@app.route("/sitemap.xml")
+def sitemap_xml():
+    """Serves sitemap.xml from the static directory to the site root."""
+    return send_from_directory(app.static_folder, "sitemap.xml")
+
+
+@app.route("/manifest.json")
+def manifest_json():
+    """Serves manifest.json from the static directory to the site root."""
+    return send_from_directory(app.static_folder, "manifest.json")
+
+
+@app.route("/browserconfig.xml")
+def browserconfig_xml():
+    """Serves browserconfig.xml from the static directory to the site root."""
+    return send_from_directory(app.static_folder, "browserconfig.xml")
 
 
 if __name__ == "__main__":
